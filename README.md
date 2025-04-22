@@ -5,8 +5,6 @@ Project Database for Group 13 of the 2025 Spring DSE
 
 # Overleaf Project Style Guide: Design Synthesis Exercise (DSE)
 
-**(Based on `report.tex` analysis and Project Guide)**
-
 ## 1. Core Principles
 
 *   **Consistency is Key:** Stick to these guidelines to ensure the final report (Project Plan, Baseline, Mid-Term, Final, etc.) is unified and professional.
@@ -19,7 +17,7 @@ Project Database for Group 13 of the 2025 Spring DSE
 
 ## 2. Document Structure & Referencing
 
-*   **Sections:** Use standard LaTeX commands: `\chapter`, `\section`, `\subsection`, `\subsubsection`.
+*   **Sections:** Use standard LaTeX commands: `\chapter`, `\section`, `\subsection`. WE DO NOT USE `\subsubsection`
 *   **Labelling:** **Crucially, label everything you might refer to:** figures, tables, sections, equations.
     *   Place the `\label{...}` command *immediately after* the `\caption{}` (for figures/tables) or the sectioning command (for headings).
     *   Use a consistent naming convention prefix: `ch:`, `sec:`, `subsec:`, `fig:`, `tab:`, `eq:`. (e.g., `\label{fig:drone_concept}`)
@@ -47,12 +45,46 @@ Project Database for Group 13 of the 2025 Spring DSE
 
 ## 5. Tables
 
-*   **Environment:** Use the `table` floating environment.
+*   **Environment:** Use the `tabularx` environment
 *   **Caption & Label:** The `\caption{Descriptive caption.}` command goes **ABOVE** the tabular environment. Follow immediately with `\label{tab:description}`.
 *   **Numbers:** Use the `S` column type (from `siunitx`) for columns containing numerical data, especially decimals, to ensure proper alignment. Check table examples in the reference `.tex` files for how to set up text headers above `S` columns (usually requires `\multicolumn{1}{c}{Header}`).
 *   **Width & Wrapping:** Use the `tabularx` environment if you need text in columns to wrap automatically to fit the page width (use the `X` column type).
 *   **Long Tables:** Use the `ltablex` environment for tables that might need to span multiple pages (requires defining headers/footers for continuation pages, see examples in `.tex` files). Remember `\keepXColumns` in the preamble if using `X` columns with `ltablex`.
 *   **Styling:** Use `\hline` for horizontal lines. Use the defined colours (`headergray`, `sectiongray`) via `\rowcolor{colorname}` for header rows or section breaks within tables for consistency. Keep styling simple and clean.
+
+*   **Table Example:** ```\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabularx}{\textwidth}{|X|S[table-format=2.3]|S[table-format=2.3]|S[table-format=3.1]|}
+\caption{ATR 72-HE Centre of Gravity Summary}\label{tab:cg_range_he}\\
+\hline
+\rowcolor{headergray}
+\textbf{CG Item} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize (Point 0) {[}m{]}}}} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize  (LEMAC) {[}m{]}}}} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize  (LEMAC) {[}\% MAC{]}}}}
+\hline \endfirsthead
+
+\caption{ATR 72-HE Centre of Gravity Summary -- Continued}\\
+\hline
+\rowcolor{headergray}
+\textbf{CG Item} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize  (Point 0) {[}m{]}}}} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize  (LEMAC) {[}m{]}}}} & 
+\multicolumn{1}{c|}{\makecell{\textbf{CG Location} \\{\scriptsize  (LEMAC) {[}\% MAC{]}}}}
+\hline \endhead
+
+\multicolumn{4}{r}{\textit{Continued on next page}} \\
+\endfoot
+
+\hline \endlastfoot
+
+$\text{OEW}_\text{HE+Batt}$ & 12.51 & 1.269 & 55.1 \\ \hline
+Passengers (56, avg) & 10.868 & -0.373 & -16.2 \\ \hline
+Forward Cargo Hold             & 4.309  & -6.932 & -301.0 \\ \hline
+Aft Cargo Hold                 & 21.859 & 10.618 & 461.0 \\ \hline
+Fuel                 & 12.277 & 1.093 & 47.5 \\\hline\addlinespace[6pt]\hline
+\bfseries MTOW      & \bfseries 12.036 & \bfseries 0.795 & \bfseries 34.5 \\
+\end{tabularx}```
 
 ## 6. Figures
 
