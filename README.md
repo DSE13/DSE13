@@ -52,7 +52,9 @@ Project Database for Group 13 of the 2025 Spring DSE
 *   **Long Tables:** Use the `ltablex` environment for tables that might need to span multiple pages (requires defining headers/footers for continuation pages, see examples in `.tex` files). Remember `\keepXColumns` in the preamble if using `X` columns with `ltablex`.
 *   **Styling:** Use `\hline` for horizontal lines. Use the defined colours (`headergray`, `sectiongray`) via `\rowcolor{colorname}` for header rows or section breaks within tables for consistency. Keep styling simple and clean.
 
-*   **Table Example:** `\footnotesize
+*   **Table Example:**
+  <pre>```latex
+footnotesize
 \renewcommand{\arraystretch}{1.2}
 \begin{tabularx}{\textwidth}{|X|S[table-format=2.3]|S[table-format=2.3]|S[table-format=3.1]|}
 \caption{ATR 72-HE Centre of Gravity Summary}\label{tab:cg_range_he}\\
@@ -84,7 +86,7 @@ Forward Cargo Hold             & 4.309  & -6.932 & -301.0 \\ \hline
 Aft Cargo Hold                 & 21.859 & 10.618 & 461.0 \\ \hline
 Fuel                 & 12.277 & 1.093 & 47.5 \\\hline\addlinespace[6pt]\hline
 \bfseries MTOW      & \bfseries 12.036 & \bfseries 0.795 & \bfseries 34.5 \\
-\end{tabularx}`
+\end{tabularx}```</pre>
 
 ## 6. Figures
 
