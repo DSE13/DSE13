@@ -1,13 +1,13 @@
 import openvsp_config
 import pandas as pd
 import numpy as np
-from plotter import plot_polar_data 
-from plotter import read_polar_file 
+from plotter import plot_polar_data
+from plotter import read_polar_file
 openvsp_config.LOAD_GRAPHICS = False
 openvsp_config.LOAD_FACADE = False
 import openvsp as vsp
 import os
-import subprocess 
+import subprocess
 import math
 
 
@@ -90,26 +90,26 @@ if is_prop_analysis:
     vsp.SetIntAnalysisInput(analysis_name, "RotateBladesFlag", (1,), 0)
     print("RotateBladesFlag set to 1 (True)")
 
-    default_prop_geom_name = "Prop" 
+    default_prop_geom_name = "Prop"
     prop_geom_name_input = input(f"Enter the Geom Name of the propeller/rotor component (e.g., Prop, RotorBlade, default: {default_prop_geom_name}): ").strip()
     if not prop_geom_name_input:
         prop_geom_name_input = default_prop_geom_name
-    
+
     rotor_id_set = False
-    possible_rotor_id_names = ["RotorID", "WingID", "PropID"] 
+    possible_rotor_id_names = ["RotorID", "WingID", "PropID"]
     for rotor_id_name in possible_rotor_id_names:
         try:
             vsp.SetStringAnalysisInput(analysis_name, rotor_id_name, (prop_geom_name_input,), 0)
             print(f"Rotor component ID ('{rotor_id_name}') set to: {prop_geom_name_input}")
             rotor_id_set = True
-            break 
-        except Exception: 
-            print(f"Note: Could not set '{rotor_id_name}'. Trying next...") 
-            pass 
+            break
+        except Exception:
+            print(f"Note: Could not set '{rotor_id_name}'. Trying next...")
+            pass
     if not rotor_id_set:
         print(f"Warning: Could not automatically set the rotor component ID using common names for '{prop_geom_name_input}'.")
         print("  Please check your VSPAERO documentation for the correct '...ID' input name for propeller/rotor components.")
-    
+
     default_rpm = 2500.0
     try:
         rpm_input_str = input(f"Enter RPM for the propeller/rotor (default: {default_rpm}): ").strip()
@@ -117,7 +117,7 @@ if is_prop_analysis:
     except ValueError:
         print(f"Invalid RPM input, using default: {default_rpm}")
         rpm_input = default_rpm
-    
+
     # Similar to RotorID, RPM input name can vary.
     rpm_set = False
     possible_rpm_names = ["RPM", "RotorRPM", "PropRPM"]
@@ -142,7 +142,7 @@ else:
     while method_choice not in ['p', 'v']:
         method_choice = input("Use (p)anel method or (v)ortex lattice method? [p/v, default: p]: ").strip().lower()
         if not method_choice: method_choice = 'p'
-    
+
     if method_choice == 'p':
         analysis_method_input[0] = vsp.PANEL # Typically 0
         print(f"AnalysisMethod set to PANEL: {analysis_method_input[0]}")
@@ -177,131 +177,292 @@ print(f"  Reference Area (S_calculated = b*c): {s_calculated:.4f} m^2")
 # --- END REFERENCE DIMENSIONS ---
 
 
+# --- CHOOSE SWEEP TYPE ---
+print("\n--- Choose Sweep Type ---")
+sweep_mode = ""
+while sweep_mode not in ['a', 'v']:
+    sweep_mode = input("Sweep (a)lpha or (v)elocity/Mach? [a/v, default: a]: ").strip().lower()
+    if not sweep_mode: sweep_mode = 'a'
 
 
+# Initialize sweep parameters - will be set based on sweep_mode
+# For Alpha Sweep
+v_inf_input_ms = -1.0
+mach_input = -1.0 # Single Mach for alpha sweep
+num_alpha_points_input = 0
+alpha_start_deg_input = 0.0
+alpha_end_deg_input = 0.0
+
+# For Velocity/Mach Sweep
+single_alpha_deg_input = 0.0 # Single Alpha for velocity sweep
+num_vel_points_input = 0
+mach_start_input = -1.0
+mach_end_input = -1.0
+# Derived velocity values if user inputs Mach for velocity sweep
+vel_start_ms_input = -1.0
+vel_end_ms_input = -1.0
 
 
+if sweep_mode == 'a':
+    print("\n--- Input Flight Condition for Alpha Sweep (Single Velocity/Mach) ---")
+    input_mode = ""
+    while input_mode not in ['v', 'm']:
+        input_mode = input("Specify flight condition by (v)elocity or (m)ach number? [v/m]: ").strip().lower()
 
-# --- USER INPUT FOR FLIGHT CONDITION (VELOCITY OR MACH) ---
-print("\n--- Input Flight Condition ---")
-v_inf_input_ms = -1.0; mach_input = -1.0
-final_reynolds_number = -1.0
+    if input_mode == 'v':
+        default_velocity_ms = 15.0
+        while v_inf_input_ms <= 0:
+            try:
+                v_str = input(f"Enter freestream velocity Vinf (m/s) (default: {default_velocity_ms}): ").strip()
+                v_inf_input_ms = float(v_str if v_str else str(default_velocity_ms))
+                if v_inf_input_ms <= 0: print("Velocity must be positive.")
+            except ValueError: print("Invalid velocity input.")
+        mach_input = v_inf_input_ms / SPEED_OF_SOUND_A_15C_SL
+        print(f"  Input Velocity (Vinf): {v_inf_input_ms:.2f} m/s"); print(f"  Calculated Mach Number: {mach_input:.4f}")
+    elif input_mode == 'm':
+        default_mach_val = 0.13
+        while mach_input <= 0:
+            try:
+                m_str = input(f"Enter Mach number (default: {default_mach_val}): ").strip()
+                mach_input = float(m_str if m_str else str(default_mach_val))
+                if mach_input <= 0: print("Mach number must be positive.")
+            except ValueError: print("Invalid Mach number input.")
+        v_inf_input_ms = mach_input * SPEED_OF_SOUND_A_15C_SL
+        print(f"  Input Mach Number: {mach_input:.4f}"); print(f"  Calculated Velocity (Vinf): {v_inf_input_ms:.2f} m/s")
 
-input_mode = ""
-while input_mode not in ['v', 'm']:
-    input_mode = input("Specify flight condition by (v)elocity or (m)ach number? [v/m]: ").strip().lower()
-
-if input_mode == 'v':
-    default_velocity_ms = 15.0
-    while v_inf_input_ms <= 0:
+    print("\n--- Input Angle of Attack (Alpha) Sweep Parameters ---")
+    default_alpha_npts = 1
+    while num_alpha_points_input <= 0:
         try:
-            v_str = input(f"Enter freestream velocity Vinf (m/s) (default: {default_velocity_ms}): ").strip()
-            v_inf_input_ms = float(v_str if v_str else str(default_velocity_ms))
-            if v_inf_input_ms <= 0: print("Velocity must be positive.")
-        except ValueError: print("Invalid velocity input.")
-    mach_input = v_inf_input_ms / SPEED_OF_SOUND_A_15C_SL
-    print(f"  Input Velocity (Vinf): {v_inf_input_ms:.2f} m/s"); print(f"  Calculated Mach Number: {mach_input:.4f}")
-elif input_mode == 'm':
-    default_mach_val = 0.13
-    while mach_input <= 0:
+            npts_str = input(f"Enter number of Alpha points (AlphaNpts) (integer > 0, default: {default_alpha_npts}): ").strip()
+            num_alpha_points_input = int(npts_str if npts_str else str(default_alpha_npts))
+            if num_alpha_points_input <= 0: print("Number of Alpha points must be a positive integer.")
+        except ValueError: print("Invalid input. Please enter an integer.")
+
+    default_alpha_start = 0.0
+    try:
+        start_str = input(f"Enter Alpha Start (degrees) (default: {default_alpha_start}): ").strip()
+        alpha_start_deg_input = float(start_str if start_str else str(default_alpha_start))
+    except ValueError:
+        print(f"Invalid input for Alpha Start, using default: {default_alpha_start}")
+        alpha_start_deg_input = default_alpha_start
+
+    if num_alpha_points_input > 1:
+        default_alpha_end = 10.0
+        while True:
+            try:
+                end_str = input(f"Enter Alpha End (degrees) (default: {default_alpha_end}): ").strip()
+                alpha_end_deg_input = float(end_str if end_str else str(default_alpha_end))
+                if alpha_end_deg_input < alpha_start_deg_input:
+                    print("Alpha End cannot be less than Alpha Start for a sweep. Please re-enter.")
+                else: break
+            except ValueError: print(f"Invalid input for Alpha End, please enter a number.")
+    else:
+        alpha_end_deg_input = alpha_start_deg_input
+    print(f"  Alpha Sweep: {num_alpha_points_input} point(s) from {alpha_start_deg_input:.2f} to {alpha_end_deg_input:.2f} deg.")
+
+elif sweep_mode == 'v':
+    print("\n--- Input Single Angle of Attack (Alpha) for Velocity/Mach Sweep ---")
+    default_single_alpha = 0.0
+    try:
+        alpha_str = input(f"Enter single Alpha value (degrees) (default: {default_single_alpha}): ").strip()
+        single_alpha_deg_input = float(alpha_str if alpha_str else str(default_single_alpha))
+    except ValueError:
+        print(f"Invalid input for Alpha, using default: {default_single_alpha}")
+        single_alpha_deg_input = default_single_alpha
+    print(f"  Single Alpha for sweep: {single_alpha_deg_input:.2f} deg.")
+
+    print("\n--- Input Velocity/Mach Sweep Parameters ---")
+    default_vel_npts = 5
+    while num_vel_points_input <= 0:
         try:
-            m_str = input(f"Enter Mach number (default: {default_mach_val}): ").strip()
-            mach_input = float(m_str if m_str else str(default_mach_val))
-            if mach_input <= 0: print("Mach number must be positive.")
-        except ValueError: print("Invalid Mach number input.")
-    v_inf_input_ms = mach_input * SPEED_OF_SOUND_A_15C_SL
-    print(f"  Input Mach Number: {mach_input:.4f}"); print(f"  Calculated Velocity (Vinf): {v_inf_input_ms:.2f} m/s")
+            npts_str = input(f"Enter number of Velocity/Mach points (Npts) (integer > 0, default: {default_vel_npts}): ").strip()
+            num_vel_points_input = int(npts_str if npts_str else str(default_vel_npts))
+            if num_vel_points_input <= 0: print("Number of points must be a positive integer.")
+        except ValueError: print("Invalid input. Please enter an integer.")
+
+    input_vel_mach_mode = ""
+    while input_vel_mach_mode not in ['v', 'm']:
+        input_vel_mach_mode = input("Specify sweep range by (v)elocity or (m)ach number? [v/m]: ").strip().lower()
+
+    if input_vel_mach_mode == 'v':
+        default_vel_start_ms = 10.0
+        while vel_start_ms_input <= 0:
+            try:
+                v_start_str = input(f"Enter Start Freestream Velocity (m/s) (default: {default_vel_start_ms}): ").strip()
+                vel_start_ms_input = float(v_start_str if v_start_str else str(default_vel_start_ms))
+                if vel_start_ms_input <= 0: print("Start velocity must be positive.")
+            except ValueError: print("Invalid start velocity input.")
+        mach_start_input = vel_start_ms_input / SPEED_OF_SOUND_A_15C_SL
+
+        if num_vel_points_input > 1:
+            default_vel_end_ms = 50.0
+            vel_end_ms_input = -1.0 # ensure it's reset
+            while True:
+                try:
+                    v_end_str = input(f"Enter End Freestream Velocity (m/s) (default: {default_vel_end_ms}): ").strip()
+                    vel_end_ms_input = float(v_end_str if v_end_str else str(default_vel_end_ms))
+                    if vel_end_ms_input <= 0: print("End velocity must be positive.")
+                    elif vel_end_ms_input < vel_start_ms_input: print("End velocity cannot be less than Start velocity.")
+                    else: break
+                except ValueError: print("Invalid end velocity input.")
+            mach_end_input = vel_end_ms_input / SPEED_OF_SOUND_A_15C_SL
+        else:
+            vel_end_ms_input = vel_start_ms_input
+            mach_end_input = mach_start_input
+        print(f"  Velocity Sweep: {num_vel_points_input} point(s) from {vel_start_ms_input:.2f} m/s to {vel_end_ms_input:.2f} m/s")
+        print(f"  Corresponding Mach Sweep: from {mach_start_input:.4f} to {mach_end_input:.4f}")
+
+    elif input_vel_mach_mode == 'm':
+        default_mach_start_val = 0.1
+        while mach_start_input <= 0:
+            try:
+                m_start_str = input(f"Enter Start Mach number (default: {default_mach_start_val}): ").strip()
+                mach_start_input = float(m_start_str if m_start_str else str(default_mach_start_val))
+                if mach_start_input <= 0: print("Start Mach number must be positive.")
+            except ValueError: print("Invalid start Mach number input.")
+        vel_start_ms_input = mach_start_input * SPEED_OF_SOUND_A_15C_SL # Store for Re calc
+
+        if num_vel_points_input > 1:
+            default_mach_end_val = 0.3
+            mach_end_input = -1.0 # ensure it's reset
+            while True:
+                try:
+                    m_end_str = input(f"Enter End Mach number (default: {default_mach_end_val}): ").strip()
+                    mach_end_input = float(m_end_str if m_end_str else str(default_mach_end_val))
+                    if mach_end_input <= 0: print("End Mach number must be positive.")
+                    elif mach_end_input < mach_start_input: print("End Mach cannot be less than Start Mach.")
+                    else: break
+                except ValueError: print("Invalid end Mach number input.")
+            vel_end_ms_input = mach_end_input * SPEED_OF_SOUND_A_15C_SL # Store for Re calc
+        else:
+            mach_end_input = mach_start_input
+            vel_end_ms_input = vel_start_ms_input
+        print(f"  Mach Sweep: {num_vel_points_input} point(s) from {mach_start_input:.4f} to {mach_end_input:.4f}")
+        print(f"  Corresponding Velocity Sweep: from {vel_start_ms_input:.2f} m/s to {vel_end_ms_input:.2f} m/s")
 
 
+# --- REYNOLDS NUMBER INPUT ---
+print("\n--- Input Reynolds Number ---")
+re_cref_start_input = -1.0
+re_cref_end_input = -1.0
+re_cref_npts_input = 1
+final_reynolds_number = -1.0 # Used for single Re case with alpha sweep
 
+if sweep_mode == 'a': # Alpha sweep, single Re value
+    if v_inf_input_ms > 0 and c_input > 0:
+        calculated_re_suggestion = (RHO_AIR_15C_SL * v_inf_input_ms * c_input) / MU_AIR_15C
+        print(f"  Suggested Reynolds Number (based on Vinf={v_inf_input_ms:.2f} m/s and c_input={c_input:.4f} m): {calculated_re_suggestion:.0f}")
+        
+        re_mode = ""
+        while re_mode not in ['c', 'm']:
+            re_mode = input("Use (c)alculated Re or input (m)anually? [c/m, default: c]: ").strip().lower()
+            if not re_mode: re_mode = 'c'
 
-# --- REYNOLDS NUMBER INPUT CHOICE ---
-if v_inf_input_ms > 0 and c_input> 0:
-    calculated_re_suggestion = (RHO_AIR_15C_SL * v_inf_input_ms * c_input) / MU_AIR_15C
-    print(f"  Suggested Reynolds Number (based on Vinf and c_input): {calculated_re_suggestion:.0f}")
-    
-    re_mode = ""
-    while re_mode not in ['c', 'm']:
-        re_mode = input("Use (c)alculated Re or input (m)anually? [c/m, default: c]: ").strip().lower()
-        if not re_mode: re_mode = 'c' # Default to calculated
-
-    if re_mode == 'c':
-        final_reynolds_number = calculated_re_suggestion
-        print(f"  Using calculated Reynolds Number: {final_reynolds_number:.0f}")
-    elif re_mode == 'm':
+        if re_mode == 'c':
+            final_reynolds_number = calculated_re_suggestion
+            print(f"  Using calculated Reynolds Number: {final_reynolds_number:.0f}")
+        elif re_mode == 'm':
+            while final_reynolds_number <= 0:
+                try:
+                    re_manual_str = input("Enter Reynolds number (ReCref) manually: ").strip()
+                    final_reynolds_number = float(re_manual_str)
+                    if final_reynolds_number <= 0: print("Reynolds number must be positive.")
+                except ValueError: print("Invalid Reynolds number input.")
+            print(f"  Using manually input Reynolds Number: {final_reynolds_number:.0f}")
+    else:
+        print("  Warning: Cannot calculate or suggest Reynolds number (Vinf or c_input invalid).")
         while final_reynolds_number <= 0:
+            print("  Please input Reynolds number manually as suggestion failed.")
             try:
                 re_manual_str = input("Enter Reynolds number (ReCref) manually: ").strip()
                 final_reynolds_number = float(re_manual_str)
                 if final_reynolds_number <= 0: print("Reynolds number must be positive.")
             except ValueError: print("Invalid Reynolds number input.")
-        print(f"  Using manually input Reynolds Number: {final_reynolds_number:.0f}")
-else:
-    print("  Warning: Cannot calculate or suggest Reynolds number (velocity or c_input invalid).")
-    while final_reynolds_number <= 0: # Force manual if suggestion failed
-        print("  Please input Reynolds number manually as suggestion failed.")
-        try:
-            re_manual_str = input("Enter Reynolds number (ReCref) manually: ").strip()
-            final_reynolds_number = float(re_manual_str)
-            if final_reynolds_number <= 0: print("Reynolds number must be positive.")
-        except ValueError: print("Invalid Reynolds number input.")
+    
+    re_cref_start_input = final_reynolds_number
+    re_cref_end_input = final_reynolds_number
+    re_cref_npts_input = 1
+    print(f"  Reynolds Number for Alpha Sweep (single value): {re_cref_start_input:.0f}")
 
+elif sweep_mode == 'v': # Velocity/Mach sweep, potentially swept Re
+    re_cref_npts_input = num_vel_points_input # Re sweep matches velocity sweep points
 
+    # vel_start_ms_input and vel_end_ms_input are defined from velocity/mach sweep input
+    can_calculate_re_range = (vel_start_ms_input > 0 and c_input > 0 and (num_vel_points_input == 1 or vel_end_ms_input > 0))
 
+    if can_calculate_re_range:
+        calculated_re_start_suggestion = (RHO_AIR_15C_SL * vel_start_ms_input * c_input) / MU_AIR_15C
+        calculated_re_end_suggestion = (RHO_AIR_15C_SL * vel_end_ms_input * c_input) / MU_AIR_15C if num_vel_points_input > 1 else calculated_re_start_suggestion
+        
+        if num_vel_points_input > 1:
+            print(f"  Suggested Reynolds Number Range (based on Vinf sweep and c_input={c_input:.4f} m):")
+            print(f"    Re_start: {calculated_re_start_suggestion:.0f} (at Vinf_start={vel_start_ms_input:.2f} m/s)")
+            print(f"    Re_end:   {calculated_re_end_suggestion:.0f} (at Vinf_end={vel_end_ms_input:.2f} m/s)")
+        else:
+            print(f"  Suggested Reynolds Number (based on Vinf={vel_start_ms_input:.2f} m/s and c_input={c_input:.4f} m): {calculated_re_start_suggestion:.0f}")
 
+        re_mode = ""
+        while re_mode not in ['c', 'm']:
+            re_mode = input("Use (c)alculated Re range/value or input (m)anually? [c/m, default: c]: ").strip().lower()
+            if not re_mode: re_mode = 'c'
 
-# --- USER INPUT FOR ALPHA SWEEP PARAMETERS ---
-print("\n--- Input Angle of Attack (Alpha) Sweep Parameters ---")
-num_alpha_points_input = 0
-alpha_start_deg_input = 0.0
-alpha_end_deg_input = 0.0
+        if re_mode == 'c':
+            re_cref_start_input = calculated_re_start_suggestion
+            re_cref_end_input = calculated_re_end_suggestion
+            print(f"  Using calculated Reynolds Number range/value.")
+        elif re_mode == 'm':
+            while re_cref_start_input <= 0:
+                try:
+                    re_manual_str = input("Enter Start Reynolds number (ReCrefStart) manually: ").strip()
+                    re_cref_start_input = float(re_manual_str)
+                    if re_cref_start_input <= 0: print("Reynolds number must be positive.")
+                except ValueError: print("Invalid Reynolds number input.")
+            
+            if num_vel_points_input > 1:
+                re_cref_end_input = -1.0
+                while re_cref_end_input <= 0:
+                    try:
+                        re_manual_str_end = input("Enter End Reynolds number (ReCrefEnd) manually: ").strip()
+                        re_cref_end_input = float(re_manual_str_end)
+                        if re_cref_end_input <= 0: print("Reynolds number must be positive.")
+                    except ValueError: print("Invalid Reynolds number input.")
+            else:
+                re_cref_end_input = re_cref_start_input
+            print(f"  Using manually input Reynolds Number range/value.")
+    else:
+        print("  Warning: Cannot calculate or suggest Reynolds number range (Vinf sweep or c_input invalid). Please input manually.")
+        while re_cref_start_input <= 0:
+            try:
+                re_manual_str = input("Enter Start Reynolds number (ReCrefStart) manually: ").strip()
+                re_cref_start_input = float(re_manual_str)
+                if re_cref_start_input <= 0: print("Reynolds number must be positive.")
+            except ValueError: print("Invalid Reynolds number input.")
+        
+        if num_vel_points_input > 1:
+            re_cref_end_input = -1.0
+            while re_cref_end_input <= 0:
+                try:
+                    re_manual_str_end = input("Enter End Reynolds number (ReCrefEnd) manually: ").strip()
+                    re_cref_end_input = float(re_manual_str_end)
+                    if re_cref_end_input <= 0: print("Reynolds number must be positive.")
+                except ValueError: print("Invalid Reynolds number input.")
+        else:
+            re_cref_end_input = re_cref_start_input
+    print(f"  Reynolds Setup for Velocity Sweep: {re_cref_npts_input} pt(s) from {re_cref_start_input:.0f} to {re_cref_end_input:.0f}")
 
-default_alpha_npts = 1
-while num_alpha_points_input <= 0:
-    try:
-        npts_str = input(f"Enter number of Alpha points (AlphaNpts) (integer > 0, default: {default_alpha_npts}): ").strip()
-        num_alpha_points_input = int(npts_str if npts_str else str(default_alpha_npts))
-        if num_alpha_points_input <= 0: print("Number of Alpha points must be a positive integer.")
-    except ValueError: print("Invalid input. Please enter an integer.")
-
-default_alpha_start = 0.0
-try:
-    start_str = input(f"Enter Alpha Start (degrees) (default: {default_alpha_start}): ").strip()
-    alpha_start_deg_input = float(start_str if start_str else str(default_alpha_start))
-except ValueError:
-    print(f"Invalid input for Alpha Start, using default: {default_alpha_start}")
-    alpha_start_deg_input = default_alpha_start
-
-if num_alpha_points_input > 1:
-    default_alpha_end = 10.0
-    while True:
-        try:
-            end_str = input(f"Enter Alpha End (degrees) (default: {default_alpha_end}): ").strip()
-            alpha_end_deg_input = float(end_str if end_str else str(default_alpha_end))
-            if alpha_end_deg_input < alpha_start_deg_input:
-                print("Alpha End cannot be less than Alpha Start for a sweep. Please re-enter.")
-            else: break
-        except ValueError: print(f"Invalid input for Alpha End, please enter a number.")
-else:
-    alpha_end_deg_input = alpha_start_deg_input
-
-print(f"  Alpha Sweep: {num_alpha_points_input} point(s) from {alpha_start_deg_input:.2f} to {alpha_end_deg_input:.2f} deg.")
 
 # Get Xcg (Xref)
+print("\n--- Input Moment Reference Point ---") # Moved slightly, contextually better here
 default_xcg = 0.0
+xcg_input = default_xcg # Initialize
 try:
     xcg_str = input(f"Enter X-coordinate of moment reference point (Xcg/Xref) in meters (default: {default_xcg}): ").strip()
     xcg_input = float(xcg_str if xcg_str else str(default_xcg))
 except ValueError:
     print(f"Invalid input for Xcg, using default: {default_xcg}")
     xcg_input = default_xcg
-# --- END FLIGHT CONDITION AND REYNOLDS INPUT ---
-
-
-
-
-
-
+# --- END XCG INPUT ---
 
 
 # --- USER INPUT FOR WAKE ITERATIONS AND SYMMETRY ---
@@ -322,7 +483,6 @@ except ValueError:
 print(f"  Wake Iterations: {wake_iter_input}")
 
 # Symmetry (SymmFlag)
-# 0 = No Symmetry, 1 = XZ Plane Symmetry (typical for aircraft), 2 = XY Plane Symmetry, 3 = YZ Plane Symmetry
 default_symm_flag = 0 # No symmetry
 symm_flag_input = default_symm_flag
 symm_options = {'0': "No Symmetry", '1': "XZ Plane (Typical Aircraft)", '2': "XY Plane", '3': "YZ Plane"}
@@ -331,75 +491,17 @@ for k, v in symm_options.items(): print(f"  {k}: {v}")
 
 try:
     symm_str = input(f"Enter Symmetry Flag (0-3, default: {default_symm_flag} - {symm_options[str(default_symm_flag)]}): ").strip()
-    if symm_str: # Only parse if user entered something
+    if symm_str:
         if symm_str in symm_options:
             symm_flag_input = int(symm_str)
         else:
             print(f"Invalid Symmetry Flag '{symm_str}'. Using default.")
             symm_flag_input = default_symm_flag
-except ValueError: # Should not happen if symm_str in symm_options check works
+except ValueError:
     print(f"Invalid input for Symmetry Flag, using default: {default_symm_flag}")
     symm_flag_input = default_symm_flag
 print(f"  Symmetry Flag: {symm_flag_input} ({symm_options[str(symm_flag_input)]})")
 # --- END WAKE ITERATIONS AND SYMMETRY ---
-
-
-
-# --- USER INPUT FOR STALL MODEL ---
-print("\n--- Input Stall Model Parameters ---")
-stall_model_flag_input = 0 # Default: 0 = Off
-alpha_stall_input_deg = 15.0 # Default if simple model chosen
-cl_max_stall_input = 1.2    # Default if simple model chosen
-foil_file_input = ""
-
-stall_model_options_map = {
-    '0': "Off",
-    '1': "Flat Plate Model",
-    '2': "User Defined Alpha_stall & CL_max",
-    '3': "Airfoil File (.dat, .af)"
-}
-print("Stall Model Options:")
-for k, v in stall_model_options_map.items(): print(f"  {k}: {v}")
-
-stall_choice_str = ""
-while stall_choice_str not in stall_model_options_map:
-    stall_choice_str = input(f"Select Stall Model option (0-3, default: 0 - Off): ").strip()
-    if not stall_choice_str: stall_choice_str = '0' # Default to Off
-    if stall_choice_str not in stall_model_options_map: print("Invalid choice. Please enter a number from 0 to 3.")
-
-stall_model_flag_input = int(stall_choice_str)
-print(f"  Selected Stall Model: {stall_model_flag_input} ({stall_model_options_map[stall_choice_str]})")
-
-if stall_model_flag_input == 2: # User Defined Alpha_stall & CL_max
-    try:
-        alpha_s_str = input(f"  Enter Alpha_stall (degrees) (default: {alpha_stall_input_deg}): ").strip()
-        alpha_stall_input_deg = float(alpha_s_str if alpha_s_str else str(alpha_stall_input_deg))
-    except ValueError:
-        print(f"  Invalid Alpha_stall input, using default: {alpha_stall_input_deg}")
-    print(f"    Alpha_stall set to: {alpha_stall_input_deg:.2f} deg")
-
-    try:
-        clmax_s_str = input(f"  Enter CL_max_stall (default: {cl_max_stall_input}): ").strip()
-        cl_max_stall_input = float(clmax_s_str if clmax_s_str else str(cl_max_stall_input))
-    except ValueError:
-        print(f"  Invalid CL_max_stall input, using default: {cl_max_stall_input}")
-    print(f"    CL_max_stall set to: {cl_max_stall_input:.3f}")
-
-elif stall_model_flag_input == 3: # Airfoil File
-    foil_file_valid = False
-    while not foil_file_valid:
-        foil_file_input = input("  Enter the full path to the airfoil data file (e.g., naca0012.dat): ").strip().replace("\"", "")
-        if not foil_file_input:
-            print("  Airfoil file path cannot be empty if this model is selected.")
-        elif not os.path.exists(foil_file_input):
-            print(f"  Warning: Airfoil file '{foil_file_input}' not found. VSPAERO might fail if it cannot access it.")
-            # Allow proceeding as VSPAERO might find it via relative path or internal library.
-            foil_file_valid = True # Or ask to re-enter: continue
-        else:
-            foil_file_valid = True
-    print(f"    FoilFile set to: {foil_file_input}")
-# --- END STALL MODEL INPUT ---
-
 
 
 # --- SET VSPAERO ANALYSIS PARAMETERS ---
@@ -408,19 +510,43 @@ print("\n--- Setting VSPAERO Analysis Parameters ---")
 vsp.SetDoubleAnalysisInput(analysis_name, "Xcg", (xcg_input,), 0)
 print(f"  VSPAERO Xcg set to: {xcg_input:.3f}m")
 
-vsp.SetIntAnalysisInput(analysis_name, "AlphaNpts", (num_alpha_points_input,), 0)
-vsp.SetDoubleAnalysisInput(analysis_name, "AlphaStart", (alpha_start_deg_input,), 0)
-vsp.SetDoubleAnalysisInput(analysis_name, "AlphaEnd", (alpha_end_deg_input,), 0)
-print(f"  VSPAERO Alpha set to: {num_alpha_points_input} pt(s) from {alpha_start_deg_input:.2f} to {alpha_end_deg_input:.2f} deg.")
+if sweep_mode == 'a': # Alpha Sweep
+    vsp.SetIntAnalysisInput(analysis_name, "AlphaNpts", (num_alpha_points_input,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "AlphaStart", (alpha_start_deg_input,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "AlphaEnd", (alpha_end_deg_input,), 0)
+    print(f"  VSPAERO Alpha set for SWEEP: {num_alpha_points_input} pt(s) from {alpha_start_deg_input:.2f} to {alpha_end_deg_input:.2f} deg.")
 
-if mach_input > 0:
-    vsp.SetDoubleAnalysisInput(analysis_name, "MachStart", (mach_input,), 0)
-    vsp.SetIntAnalysisInput(analysis_name, "MachNpts", (1,), 0)
-else: print("Warning: Mach invalid. VSPAERO uses default Mach setting.")
-if final_reynolds_number > 0:
-    vsp.SetDoubleAnalysisInput(analysis_name, "ReCref", (final_reynolds_number,), 0)
-    vsp.SetIntAnalysisInput(analysis_name, "ReCrefNpts", (1,), 0)
-else: print("Warning: Reynolds invalid. VSPAERO uses default ReCref setting.")
+    if mach_input > 0:
+        vsp.SetDoubleAnalysisInput(analysis_name, "MachStart", (mach_input,), 0)
+        vsp.SetDoubleAnalysisInput(analysis_name, "MachEnd", (mach_input,), 0) # End = Start for single point
+        vsp.SetIntAnalysisInput(analysis_name, "MachNpts", (1,), 0)
+        print(f"  VSPAERO Mach set to SINGLE value: {mach_input:.4f}")
+    else: print("Warning: Mach invalid for Alpha sweep. VSPAERO uses default Mach setting.")
+
+elif sweep_mode == 'v': # Velocity/Mach Sweep
+    vsp.SetIntAnalysisInput(analysis_name, "AlphaNpts", (1,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "AlphaStart", (single_alpha_deg_input,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "AlphaEnd", (single_alpha_deg_input,), 0) # End = Start
+    print(f"  VSPAERO Alpha set to SINGLE value: {single_alpha_deg_input:.2f} deg.")
+
+    if mach_start_input > 0: # mach_end_input will also be >0 if num_vel_points > 1
+        vsp.SetDoubleAnalysisInput(analysis_name, "MachStart", (mach_start_input,), 0)
+        vsp.SetDoubleAnalysisInput(analysis_name, "MachEnd", (mach_end_input,), 0)
+        vsp.SetIntAnalysisInput(analysis_name, "MachNpts", (num_vel_points_input,), 0)
+        print(f"  VSPAERO Mach set for SWEEP: {num_vel_points_input} pt(s) from {mach_start_input:.4f} to {mach_end_input:.4f}")
+    else: print("Warning: Mach range invalid for Velocity sweep. VSPAERO uses default Mach settings.")
+
+# Reynolds parameters (common to both sweep modes, using Start, End, Npts)
+if re_cref_start_input > 0:
+    vsp.SetDoubleAnalysisInput(analysis_name, "ReCrefStart", (re_cref_start_input,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "ReCrefEnd", (re_cref_end_input,), 0)
+    vsp.SetIntAnalysisInput(analysis_name, "ReCrefNpts", (re_cref_npts_input,), 0)
+    if re_cref_npts_input > 1:
+        print(f"  VSPAERO ReCref set for SWEEP: {re_cref_npts_input} pt(s) from {re_cref_start_input:.0f} to {re_cref_end_input:.0f}")
+    else:
+        print(f"  VSPAERO ReCref set to SINGLE value: {re_cref_start_input:.0f}")
+else: print("Warning: Reynolds invalid/not set. VSPAERO uses default ReCref setting(s).")
+
 
 if s_calculated > 0: vsp.SetDoubleAnalysisInput(analysis_name, "Sref", (s_calculated,), 0); print(f"  Sref: {s_calculated:.6f} m^2")
 else: print("Warning: Sref invalid. VSPAERO uses default Sref.")
@@ -497,7 +623,7 @@ if file_to_try_reading:
     if polar_df_to_plot is not None and not polar_df_to_plot.empty:
         print(f"\n--- Plotting Data from '{polar_file_processed}' ---")
         available_cols = polar_df_to_plot.columns.tolist()
-        
+
         if not available_cols:
             print("No columns found in the polar data. Cannot plot.")
         else:
@@ -507,8 +633,17 @@ if file_to_try_reading:
 
             x_axis_col_input = ""
             x_axis_valid = False
-            default_x_col = 'Alpha' if 'Alpha' in available_cols else ('AoA' if 'AoA' in available_cols else (available_cols[0] if available_cols else None))
             
+            # Adjust default X-axis based on sweep_mode
+            default_x_col = None
+            if sweep_mode == 'a':
+                default_x_col = 'Alpha' if 'Alpha' in available_cols else ('AoA' if 'AoA' in available_cols else None)
+            elif sweep_mode == 'v':
+                default_x_col = 'Mach' if 'Mach' in available_cols else None # VSPAERO .polar has Mach, not usually Vinf
+            if not default_x_col and available_cols: # Fallback
+                 default_x_col = available_cols[0]
+
+
             while not x_axis_valid:
                 prompt_x = f"Enter the NAME or NUMBER for the X-AXIS (default: {default_x_col if default_x_col else 'None'}): "
                 x_choice_str = input(prompt_x).strip()
@@ -521,12 +656,11 @@ if file_to_try_reading:
                     else: print("Invalid number choice.")
                 elif x_choice_str in available_cols: x_axis_col_input = x_choice_str; x_axis_valid = True
                 else: print(f"Column '{x_choice_str}' not found.")
-            
+
             y_axis_col_input = ""
             y_axis_valid = False
             if x_axis_valid:
                 default_y_candidates = [col for col in available_cols if col != x_axis_col_input]
-                # Try to find CL or Cl as a good default Y
                 default_y_col_cl_candidate = next((c for c in default_y_candidates if c.upper() == 'CL'), None)
                 default_y_col = default_y_col_cl_candidate if default_y_col_cl_candidate else \
                                 (default_y_candidates[0] if default_y_candidates else (available_cols[0] if available_cols else None))
@@ -544,7 +678,7 @@ if file_to_try_reading:
                     elif y_choice_str in available_cols: y_axis_col_input = y_choice_str; y_axis_valid = True
                     else: print(f"Column '{y_choice_str}' not found.")
                     if y_axis_valid and y_axis_col_input == x_axis_col_input: print(f"Note: Plotting '{y_axis_col_input}' against itself.")
-                
+
                 if y_axis_valid:
                     plot_polar_data(polar_df_to_plot, x_axis_col_input, y_axis_col_input, polar_file_processed)
                 else:
@@ -570,7 +704,9 @@ if is_prop_analysis:
             print(f"Could not read .rotor file: {e}")
     else:
         print(f"\nNo .rotor file ({rotor_results_file_name}) found. Propeller analysis might have failed, not run, or produced different output names.")
-        print(f"  Ensure the propeller component name ('{prop_geom_name_input if prop_geom_name_input else 'N/A'}') was correctly set and is active in VSPAERO.")
+        # prop_geom_name_input might not be defined if is_prop_analysis is false, handle this.
+        prop_name_for_msg = prop_geom_name_input if 'prop_geom_name_input' in locals() and prop_geom_name_input else 'N/A'
+        print(f"  Ensure the propeller component name ('{prop_name_for_msg}') was correctly set and is active in VSPAERO.")
 
 
 print("\nAnalysis script finished.")
