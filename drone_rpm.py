@@ -2,29 +2,39 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import brentq, fsolve
 import re
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
+plt.style.use("paper.mplstyle")
+
+pt = 1./72.27
+
+jour_sizes = {"PRD": {"onecol": 483.69*pt},
+             }
+
+my_width = jour_sizes["PRD"]["onecol"]
+golden = (1 + 5 ** 0.5) / 2
 
 # --- Constants and Configuration ---
 RHO_AIR = 1.225  # kg/m^3 (Density of air)
 MU_AIR = 1.81e-5 # Pa.s (Dynamic viscosity of air at ~15°C)
 
 # Duct parameters (based on the "thin annulus" assumption)
-D_MEAN_DUCT_M = 0.255  # Mean diameter of the annular wing/duct in meters
+D_MEAN_DUCT_M = 0.2  # Mean diameter of the annular wing/duct in meters
 R_MEAN_DUCT_M = D_MEAN_DUCT_M / 2.0 # Mean radius of the duct
-L_DUCT_M = 0.128 # Chord length of the NACA0012 airfoil, treated as the axial length for friction
+L_DUCT_M = 0.1 # Chord length of the NACA0012 airfoil, treated as the axial length for friction
 
 RE_PHI_CRITICAL = 60.0 # Rotational Reynolds number for C_mc transition
 
 # Propeller Regression Coefficients
-A_T_REG = 1.3197e-10
-B_T_REG = -5.1746e-08
-C_T_REG = -3.4041e-03
-A_TH_REG = 3.3537e+01
-B_TH_REG = 77.1731
-C_TH_REG = -0.3048
+A_T_REG = 9.4196e-11
+B_T_REG = 1.4928e-07
+C_T_REG = -2.2723e-03
+A_TH_REG = 1.2770e+02
+B_TH_REG = 67.4375
+C_TH_REG = -0.1011
 
-TARGET_THRUST_N = 0.9
+TARGET_THRUST_N = 0.6
 
 # --- USER ADJUSTABLE PLOT SETTING ---
 # Set Y_AXIS_LOWER_LIMIT_PLOT to a numeric value (e.g., 0.1, 0.5) to set the y-axis start.
@@ -282,7 +292,7 @@ if thrust_convergence_history:
     ax.grid(True, which='major', axis='both', linestyle='-', linewidth='0.5', color='gray')
     # Minor grid lines ONLY on Y-axis
     ax.grid(True, which='minor', axis='y', linestyle=':', linewidth='0.5', color='lightgray')
-
+    fig = plt.figure(figsize = (my_width, my_width/golden))
     ax.legend()
     plt.tight_layout()
     plt.show()
