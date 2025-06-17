@@ -106,8 +106,8 @@ def parse_prop_data(file_path, target_v_mph=33.0):
 
 
 def main():
-    file_path = r'C:\Users\kilianseibl\Downloads\PERFILES_WEB-202503\PERFILES_WEB\PERFILES2\PER3_4x45E.txt'
-    target_velocity_mph = 35.79098
+    file_path = r'C:\Users\kilianseibl\Downloads\DSE13\PER3_41x41E.txt'
+    target_velocity_mph = 0
     target_velocity_mps = round(target_velocity_mph * 0.44704, 0)
 
     extracted_points = parse_prop_data(file_path, target_velocity_mph)
@@ -174,7 +174,7 @@ def main():
         degree_torque_rpm = 2
         coeffs_torque_rpm = np.polyfit(rpm_plot_np, torque_plot_nm_np, degree_torque_rpm)
         poly_func_torque_rpm = np.poly1d(coeffs_torque_rpm)
-        print(rf"\nRegression for Torque vs RPM (Thrust $\leq$ {thrust_threshold}N, $Torque = a \cdot RPM^2 + b \cdot RPM + c$):")
+        print(rf"Regression for Torque vs RPM (Thrust $\leq$ {thrust_threshold}N, $Torque = a \cdot RPM^2 + b \cdot RPM + c$):")
         print(f"a = {coeffs_torque_rpm[0]:.4e}")
         print(f"b = {coeffs_torque_rpm[1]:.4e}")
         print(f"c = {coeffs_torque_rpm[2]:.4e}")
@@ -190,11 +190,11 @@ def main():
         torque_fit_line_rpm = poly_func_torque_rpm(rpm_fit_line)
 
         plt.figure(figsize = (my_width, my_width/golden))
-        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5)
-        plt.plot(rpm_fit_line, torque_fit_line_rpm, label=rf'Quadratic Regression (R$^2$={r_squared_torque_rpm:.3f})', color='red', linestyle='--')
+        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5, s=20)
+        plt.plot(rpm_fit_line, torque_fit_line_rpm, label=rf'Quadr. Regr. (R$^2$={r_squared_torque_rpm:.3f})', color='red', linestyle='--')
         plt.xlabel('RPM [1/s]')
         plt.ylabel(rf'Torque [$N \cdot m$]')
-        plt.title(rf'Propeller Torque vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s)')
+        plt.title(f'Torque vs. RPM \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -205,7 +205,7 @@ def main():
         plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5)
         plt.xlabel('RPM [1/s]')
         plt.ylabel(rf'Torque [$N \cdot m$]')
-        plt.title(rf'Propeller Torque vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only')
+        plt.title(rf'Torque vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -215,70 +215,103 @@ def main():
 
 
     # --- Plot 2: Thrust vs RPM (Filtered Data) ---
-    if len(rpm_plot_np) >= 3 and len(thrust_plot_n_np) >= 3: # Need at least 3 points for quadratic regression
-        degree_thrust_rpm = 2 
-        coeffs_thrust_rpm = np.polyfit(rpm_plot_np, thrust_plot_n_np, degree_thrust_rpm)
-        poly_func_thrust_rpm = np.poly1d(coeffs_thrust_rpm)
-        print(rf"\nRegression for Thrust vs RPM (Thrust $\leq$ {thrust_threshold}N, $Thrust = a \cdot RPM^2 + b \cdot RPM + c$):")
-        print(f"a = {coeffs_thrust_rpm[0]:.4e}")
-        print(f"b = {coeffs_thrust_rpm[1]:.4f}")
-        print(f"c = {coeffs_thrust_rpm[2]:.4f}")
+    can_attempt_regression = False
+    rpm_reg_np = np.array([])
+    thrust_reg_n_np = np.array([])
 
-        # Calculate R-squared for Thrust vs RPM
-        y_pred_thrust_rpm = poly_func_thrust_rpm(rpm_plot_np)
-        ss_res_thrust_rpm = np.sum((thrust_plot_n_np - y_pred_thrust_rpm)**2)
-        ss_tot_thrust_rpm = np.sum((thrust_plot_n_np - np.mean(thrust_plot_n_np))**2)
+    # Ensure we have initial data before attempting to filter for regression
+    if len(rpm_plot_np) > 0 and len(thrust_plot_n_np) > 0:
+        min_significant_thrust = 0.05  # Threshold for "significant" thrust for regression
+        
+        # Find indices where thrust in the initially filtered data is significant
+        significant_thrust_indices = np.where(thrust_plot_n_np >= min_significant_thrust)[0]
+
+        if len(significant_thrust_indices) > 0:
+            first_significant_idx = significant_thrust_indices[0]
+            
+            # Create a subset of data for regression (where thrust is significant)
+            _rpm_reg_temp = rpm_plot_np[first_significant_idx:]
+            _thrust_reg_temp = thrust_plot_n_np[first_significant_idx:]
+
+            if len(_rpm_reg_temp) >= 3:  # Need at least 3 points for a quadratic fit
+                rpm_reg_np = _rpm_reg_temp
+                thrust_reg_n_np = _thrust_reg_temp
+                can_attempt_regression = True
+            else:
+                print(f"Not enough data points (found {len(_rpm_reg_temp)} after filtering for Thrust >= {min_significant_thrust}N) for quadratic Thrust vs RPM regression.")
+        else:
+            print(f"No data points found with Thrust >= {min_significant_thrust}N for regression.")
+    
+    if can_attempt_regression:
+        degree_thrust_rpm = 2 
+        coeffs_thrust_rpm = np.polyfit(rpm_reg_np, thrust_reg_n_np, degree_thrust_rpm)
+        poly_func_thrust_rpm = np.poly1d(coeffs_thrust_rpm)
+        
+        print(rf"Regression for Thrust vs RPM (using data subset where original Thrust $\geq$ {min_significant_thrust}N and $\leq$ {thrust_threshold}N):")
+        print(rf"$Thrust = a \cdot RPM^2 + b \cdot RPM + c$")
+        print(f"a = {coeffs_thrust_rpm[0]:.4e}")
+        print(f"b = {coeffs_thrust_rpm[1]:.4e}")
+        print(f"c = {coeffs_thrust_rpm[2]:.4e}")
+
+        # Calculate R-squared on the regression subset
+        y_pred_thrust_rpm_reg = poly_func_thrust_rpm(rpm_reg_np)
+        ss_res_thrust_rpm = np.sum((thrust_reg_n_np - y_pred_thrust_rpm_reg)**2)
+        ss_tot_thrust_rpm = np.sum((thrust_reg_n_np - np.mean(thrust_reg_n_np))**2)
         r_squared_thrust_rpm = 1 - (ss_res_thrust_rpm / ss_tot_thrust_rpm) if ss_tot_thrust_rpm > 0 else 0
-        print(f"R-squared (Thrust vs RPM): {r_squared_thrust_rpm:.4f}")
+        print(f"R-squared (on regression subset): {r_squared_thrust_rpm:.4f}")
         
-        min_rpm_for_fit = min(rpm_plot_np)
-        max_rpm_for_fit = max(rpm_plot_np)
+        # Determine RPM range for plotting the fit line, based on the regression data
+        min_rpm_for_fit = min(rpm_reg_np) if len(rpm_reg_np) > 0 else 0
+        max_rpm_for_fit = max(rpm_reg_np) if len(rpm_reg_np) > 0 else 1 
         
-        # Ensure linspace has a valid range (though less likely needed for RPM than for torque/thrust if data is sparse)
-        if (max_rpm_for_fit - min_rpm_for_fit < 1e-9) : # Check for very small or zero range
+        if (max_rpm_for_fit - min_rpm_for_fit < 1e-9) : # Ensure a valid range for linspace
              min_rpm_for_fit -= 0.1 * abs(min_rpm_for_fit) if abs(min_rpm_for_fit)>1e-9 else 0.01
              max_rpm_for_fit += 0.1 * abs(max_rpm_for_fit) if abs(max_rpm_for_fit)>1e-9 else 0.01
-             if min_rpm_for_fit == max_rpm_for_fit: # Still equal after adjustment
-                min_rpm_for_fit -= 0.01 # Fallback for zero original range
+             if min_rpm_for_fit == max_rpm_for_fit: 
+                min_rpm_for_fit -= 0.01 
                 max_rpm_for_fit += 0.01
         
         rpm_fit_line_thrust = np.linspace(min_rpm_for_fit, max_rpm_for_fit, 200)
-        thrust_fit_line_rpm = poly_func_thrust_rpm(rpm_fit_line_thrust) # Using rpm_fit_line_thrust as input
+        thrust_fit_line_rpm = poly_func_thrust_rpm(rpm_fit_line_thrust)
 
         plt.figure(figsize = (my_width, my_width/golden))
-        # Scatter plot x-axis is rpm_plot_np, color is also rpm_plot_np
-        scatter = plt.scatter(rpm_plot_np, thrust_plot_n_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5)
-        plt.plot(rpm_fit_line_thrust, thrust_fit_line_rpm, label=rf'Quadratic Regression (R$^2$={r_squared_thrust_rpm:.3f})', color='red', linestyle='--')
+        # Scatter plot ALL data points that met the initial thrust_threshold
+        plt.scatter(rpm_plot_np, thrust_plot_n_np, label=rf'All Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5, s=20)
+        # Plot the regression line based on the subset of data with significant thrust
+        plt.plot(rpm_fit_line_thrust, thrust_fit_line_rpm, label=rf'Quadr. Regr. (R$^2$={r_squared_thrust_rpm:.3f})', color='red', linestyle='--')
         
-        plt.xlabel(rf'RPM [1/s]') # Changed X-axis label
+        plt.xlabel(rf'RPM [1/s]') 
         plt.ylabel(rf'Thrust [N]')
-        plt.title(rf'APC B4x4.5E-B4 Thrust vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s)') # Updated title
+        plt.title(f'Thrust vs. RPM \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-    elif len(rpm_plot_np) > 0 and len(thrust_plot_n_np) > 0: # Check both arrays have data
-        print(f"Not enough data points for Thrust vs RPM quadratic regression with Thrust <= {thrust_threshold}N. Plotting points only.")
+
+    elif len(rpm_plot_np) > 0 and len(thrust_plot_n_np) > 0: 
+        # Fallback: Plot points only if regression couldn't be performed (e.g. not enough significant thrust data)
+        # but there was some data meeting the initial thrust_threshold.
+        print(f"Plotting points only for Thrust vs RPM (Thrust <= {thrust_threshold}N). Regression on subset (Thrust >= {min_significant_thrust}N) failed or not enough data.")
         plt.figure(figsize = (my_width, my_width/golden))
         scatter = plt.scatter(rpm_plot_np, thrust_plot_n_np, c=rpm_plot_np, cmap='viridis', s=50, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', zorder=5)
         cbar = plt.colorbar(scatter, label='RPM')
-        plt.xlabel(rf'RPM [1/s]') # Changed X-axis label
+        plt.xlabel(rf'RPM [1/s]') 
         plt.ylabel(rf'Thrust [N]')
-        plt.title(rf'APC B4x4.5E-B4 Thrust vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only') # Updated title
-        plt.legend()
+        plt.title(rf'Thrust vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only') 
+        plt.legend() # legend() is called for consistency, though label might be the only item.
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-    else:
+    else: # No data at all met the initial thrust_threshold
         print(f"No data to plot for Thrust vs RPM with Thrust <= {thrust_threshold}N.")
 
 
     # --- Plot 3: Power vs Thrust (Filtered Data) ---
-    if len(thrust_plot_n_np) >= 3 and len(power_plot_w_np) >= 3: # Need at least 3 points for quadratic regression
+    if len(thrust_plot_n_np) >= 3 and len(power_plot_w_np) >= 3: # Need at least 3 points for Quadr. Regr.
             degree_power_thrust = 2
             coeffs_power_thrust = np.polyfit(thrust_plot_n_np, power_plot_w_np, degree_power_thrust)
             poly_func_power_thrust = np.poly1d(coeffs_power_thrust)
-            print(rf"\nRegression for Power vs Thrust (Thrust $\leq$ {thrust_threshold}N, $Power = a \cdot Thrust^2 + b \cdot Thrust + c$):")
+            print(rf"Regression for Power vs Thrust (Thrust $\leq$ {thrust_threshold}N, $Power = a \cdot Thrust^2 + b \cdot Thrust + c$):")
             print(f"a = {coeffs_power_thrust[0]:.4e}")
             print(f"b = {coeffs_power_thrust[1]:.4f}")
             print(f"c = {coeffs_power_thrust[2]:.4f}")
@@ -304,25 +337,25 @@ def main():
             power_fit_line_thrust = poly_func_power_thrust(thrust_fit_line_power)
 
             plt.figure(figsize = (my_width, my_width/golden))
-            scatter = plt.scatter(thrust_plot_n_np, power_plot_w_np, c=rpm_plot_np, cmap='viridis', s=50, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', zorder=5)
-            plt.plot(thrust_fit_line_power, power_fit_line_thrust, label=rf'Quadratic Regression (R$^2$={r_squared_power_thrust:.3f})', color='red', linestyle='--')
+            scatter = plt.scatter(thrust_plot_n_np, power_plot_w_np, color='blue', label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', zorder=5, s=20)
+            plt.plot(thrust_fit_line_power, power_fit_line_thrust, label=rf'Quadr. Regr. (R$^2$={r_squared_power_thrust:.3f})', color='red', linestyle='--')
             
-            cbar = plt.colorbar(scatter, label='RPM')
+            #cbar = plt.colorbar(scatter, label='RPM')
             plt.xlabel(rf'Thrust [N]')
             plt.ylabel(rf'Power [W]')
-            plt.title(rf'APC B4x4.5E-B4 Power vs. Thrust (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s)')
+            plt.title(f'Power vs. Thrust \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
             plt.show()
     elif len(thrust_plot_n_np) > 0:
-        print(f"Not enough data points for Power vs Thrust quadratic regression with Thrust <= {thrust_threshold}N. Plotting points only.")
+        print(f"Not enough data points for Power vs Thrust Quadr. Regr. with Thrust <= {thrust_threshold}N. Plotting points only.")
         plt.figure(figsize = (my_width, my_width/golden))
-        scatter = plt.scatter(thrust_plot_n_np, power_plot_w_np, c=rpm_plot_np, cmap='viridis', s=50, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', zorder=5)
-        cbar = plt.colorbar(scatter, label='RPM')
+        #scatter = plt.scatter(thrust_plot_n_np, power_plot_w_np, c=rpm_plot_np, cmap='viridis', s=50, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', zorder=5)
+        #cbar = plt.colorbar(scatter, label='RPM')
         plt.xlabel(rf'Thrust [N]')
         plt.ylabel(rf'Power [W]')
-        plt.title(rf'APC B4x4.5E-B4 Power vs. Thrust (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only')
+        plt.title(rf'Power vs. Thrust (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -333,4 +366,3 @@ def main():
 if __name__ == '__main__':
     main()
 
-#  r'C:\Users\kilianseibl\Downloads\PERFILES_WEB-202503\PERFILES_WEB\PERFILES2\PER3_4x4E-3.txt'
