@@ -1,0 +1,24 @@
+text.usetex: True
+text.latex.preamble: \usepackage{amsmath}\usepackage{amssymb}
+font.family: sans-serif
+font.serif: Lato Math
+savefig.bbox: tight
+savefig.format: pdf
+font.size: 8
+axes.grid           : True
+axes.grid.which     : both        # Show grid for both major and minor ticks
+xtick.minor.visible : True
+ytick.minor.visible : True
+xtick.direction        : in
+ytick.direction        : in
+xtick.minor.visible    : True
+ytick.minor.visible    : True
+xtick.major.size       : 6
+ytick.major.size       : 6
+xtick.minor.size       : 3
+ytick.minor.size       : 3
+grid.linestyle         : --
+grid.linewidth         : 0.6
+grid.alpha             : 0.3
+grid.color             : gray
+figure.autolayout  : True
