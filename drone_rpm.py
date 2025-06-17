@@ -27,14 +27,19 @@ L_DUCT_M = 0.1 # Chord length of the NACA0012 airfoil, treated as the axial leng
 RE_PHI_CRITICAL = 60.0 # Rotational Reynolds number for C_mc transition
 
 # Propeller Regression Coefficients
-A_T_REG = 9.4196e-11
-B_T_REG = 1.4928e-07
-C_T_REG = -2.2723e-03
-A_TH_REG = 1.2770e+02
-B_TH_REG = 67.4375
-C_TH_REG = -0.1011
+A_T_REG = 6.2461e-11
+B_T_REG = 2.1652e-07
+C_T_REG = -8.8256e-04
 
-TARGET_THRUST_N = 0.6
+A_THRUST_RPM_REG = 5.7347e-09
+B_THRUST_RPM_REG = 1.5587e-05
+C_THRUST_RPM_REG = -1.8603e-01
+
+A_POWER_THRUST_REG = 4.8792e+00
+B_POWER_THRUST_REG = 12.7298
+C_POWER_THRUST_REG = -0.0332
+
+TARGET_THRUST_N = 0.2
 
 # --- USER ADJUSTABLE PLOT SETTING ---
 # Set Y_AXIS_LOWER_LIMIT_PLOT to a numeric value (e.g., 0.1, 0.5) to set the y-axis start.
@@ -56,21 +61,37 @@ def solve_quadratic_positive_root(a, b, c):
     positive_roots = [r for r in roots if r > 1e-9] # Filter for positive roots (small epsilon for float comparison)
     return max(positive_roots) if positive_roots else None
 
-def get_torque_for_thrust_regression(target_thrust_n):
-    return solve_quadratic_positive_root(A_TH_REG, B_TH_REG, C_TH_REG - target_thrust_n)
+# def get_torque_for_thrust_regression(target_thrust_n):
+#     return solve_quadratic_positive_root(A_TH_REG, B_TH_REG, C_TH_REG - target_thrust_n)
 
-def get_n_prop_ground_for_torque_regression(target_torque_nm):
-    return solve_quadratic_positive_root(A_T_REG, B_T_REG, C_T_REG - target_torque_nm)
+def get_n_prop_ground_for_thrust_rpm_regression(target_thrust_n):
+    """Calculates propeller RPM required to achieve target_thrust_n using Thrust vs RPM regression."""
+    # Solves: target_thrust_n = A_THRUST_RPM_REG * RPM^2 + B_THRUST_RPM_REG * RPM + C_THRUST_RPM_REG
+    # which is: A_THRUST_RPM_REG * RPM^2 + B_THRUST_RPM_REG * RPM + (C_THRUST_RPM_REG - target_thrust_n) = 0
+    return solve_quadratic_positive_root(A_THRUST_RPM_REG, B_THRUST_RPM_REG, C_THRUST_RPM_REG - target_thrust_n)
 
 def calculate_prop_torque_from_n_prop_ground(n_prop_ground_rpm):
     rpm_for_calc = max(0, n_prop_ground_rpm) # Handles negative RPM by treating as 0
     torque_nm = (A_T_REG * rpm_for_calc**2) + (B_T_REG * rpm_for_calc) + C_T_REG
     return max(0, torque_nm) # Torque cannot be negative
 
-def calculate_thrust_from_prop_torque(torque_nm):
-    if torque_nm <= 1e-9: return 0.0 # No torque, no thrust
-    thrust_n = (A_TH_REG * torque_nm**2) + (B_TH_REG * torque_nm) + C_TH_REG
+def calculate_thrust_from_n_prop_ground(n_prop_ground_rpm):
+    """Calculates thrust from propeller RPM using Thrust vs RPM regression."""
+    rpm_for_calc = max(0, n_prop_ground_rpm) # Handles negative RPM by treating as 0
+    # Thrust = A_THRUST_RPM_REG * RPM^2 + B_THRUST_RPM_REG * RPM + C_THRUST_RPM_REG
+    thrust_n = (A_THRUST_RPM_REG * rpm_for_calc**2) + \
+               (B_THRUST_RPM_REG * rpm_for_calc) + \
+               C_THRUST_RPM_REG
     return max(0, thrust_n) # Thrust cannot be negative
+
+def calculate_power_from_thrust(thrust_n):
+    """Calculates estimated power from thrust using Power vs Thrust regression."""
+    # Power = A_POWER_THRUST_REG * Thrust^2 + B_POWER_THRUST_REG * Thrust + C_POWER_THRUST_REG
+    power_w = (A_POWER_THRUST_REG * thrust_n**2) + \
+              (B_POWER_THRUST_REG * thrust_n) + \
+              C_POWER_THRUST_REG
+    return max(0, power_w) # Power cannot be negative
+
 
 def solve_turbulent_cmc(Re_phi):
     if Re_phi < 1e-9: return 0.0
@@ -172,7 +193,8 @@ def calculate_system_state_and_thrust_error(n_motor_setting_trial_rpm):
     n_prop_ground_eq_rpm_local = n_motor_setting_trial_rpm - n_duct_eq_rpm_local
 
     prop_torque_eq_local = calculate_prop_torque_from_n_prop_ground(n_prop_ground_eq_rpm_local)
-    thrust_achieved_local = calculate_thrust_from_prop_torque(prop_torque_eq_local)
+    # thrust_achieved_local = calculate_thrust_from_prop_torque(prop_torque_eq_local) # Old version
+    thrust_achieved_local = calculate_thrust_from_n_prop_ground(n_prop_ground_eq_rpm_local) # New version
 
     return thrust_achieved_local - TARGET_THRUST_N, n_duct_eq_rpm_local, n_prop_ground_eq_rpm_local, prop_torque_eq_local, thrust_achieved_local
 
@@ -187,11 +209,22 @@ thrust_convergence_history.clear()
 
 print(f"Attempting to find motor RPM setting for Target Thrust: {TARGET_THRUST_N:.3f} N")
 n_motor_low_bound_est = 2000
-torque_for_target_thrust_est = get_torque_for_thrust_regression(TARGET_THRUST_N)
-if torque_for_target_thrust_est is not None and torque_for_target_thrust_est > 1e-6:
-    n_pg_for_torque_est = get_n_prop_ground_for_torque_regression(torque_for_target_thrust_est)
-    if n_pg_for_torque_est is not None and n_pg_for_torque_est > 0:
-        n_motor_low_bound_est = max(n_motor_low_bound_est, n_pg_for_torque_est)
+# Old estimation based on torque regression
+# torque_for_target_thrust_est = get_torque_for_thrust_regression(TARGET_THRUST_N)
+# if torque_for_target_thrust_est is not None and torque_for_target_thrust_est > 1e-6:
+#     n_pg_for_torque_est = get_n_prop_ground_for_torque_regression(torque_for_target_thrust_est)
+#     if n_pg_for_torque_est is not None and n_pg_for_torque_est > 0:
+#         n_motor_low_bound_est = max(n_motor_low_bound_est, n_pg_for_torque_est)
+
+# New estimation based on Thrust vs RPM regression
+n_pg_for_thrust_est = get_n_prop_ground_for_thrust_rpm_regression(TARGET_THRUST_N)
+if n_pg_for_thrust_est is not None and n_pg_for_thrust_est > 0:
+    # This estimates the propeller RPM. The motor RPM will be this + duct RPM.
+    # For a low bound, we can assume duct RPM is small, or just use n_pg as a starting point.
+    # If the duct requires significant RPM, this estimate might be too low,
+    # but brentq should still work if the range [low, high] brackets the root.
+    n_motor_low_bound_est = max(n_motor_low_bound_est, n_pg_for_thrust_est)
+
 
 n_motor_high_bound_est = 25000 # User updated this from 60000
 
@@ -240,6 +273,11 @@ if not np.isnan(n_motor_solution_rpm) and brentq_results_obj and brentq_results_
     print(f"Resulting Duct RPM (ground, N_dg): {final_n_dg_rpm:.2f} RPM")
     print(f"Achieved Propeller Torque (@N_pg): {final_prop_torque:.4f} Nm")
     print(f"Achieved Propeller Thrust (@N_pg): {final_thrust:.4f} N (Error: {(final_thrust - TARGET_THRUST_N):.2e} N)")
+    
+    # Calculate and print estimated power
+    estimated_power_w = calculate_power_from_thrust(final_thrust)
+    print(f"Estimated Power Draw (@Achieved Thrust): {estimated_power_w:.2f} W")
+    
     print(f"Duct C_mc (single surface ref @N_dg): {final_duct_cmc:.4f}")
     print(f"Total Duct Torque (both surfaces @N_dg): {final_duct_torque:.4f} Nm")
     if not (np.isnan(final_prop_torque) or np.isnan(final_duct_torque)):
