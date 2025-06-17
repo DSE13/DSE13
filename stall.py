@@ -458,10 +458,10 @@ def mirror_aero_data_axisymmetric(df_input: pd.DataFrame) -> pd.DataFrame:
 if __name__ == '__main__':
     # Ensure correct path if stall.py and xzylo.csv are in different directories
 
-    input_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo.csv"
+    input_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo_V20.csv"
     
-    output_stalled_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo_stall.csv"
-    output_mirrored_stalled_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo_mirror.csv"
+    output_stalled_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo_stall_V20.csv"
+    output_mirrored_stalled_csv_file = r"C:\Users\tomsp\OpenVSP2\OpenVSP-3.43.0-win64\xzylo_mirror_V20.csv"
     
     STALL_AOA_POINT = 18.0 
     CL_DROP1_VAL, CL_DROP1_DUR = 0.2, 10.0 
@@ -475,7 +475,7 @@ if __name__ == '__main__':
         exit()
 
     try:
-        df_input_data = pd.read_csv(input_csv_file, sep=';')
+        df_input_data = pd.read_csv(input_csv_file, sep=',')
     except Exception as e:
         print(f"ERROR: Failed to read CSV file with pandas: {e}")
         exit()
@@ -586,11 +586,11 @@ if __name__ == '__main__':
             if cl_col_name in df_plot_beta0_clcd_proc_filtered.columns:
                 ax1.plot(df_plot_beta0_clcd_proc_filtered['AoA'], df_plot_beta0_clcd_proc_filtered[cl_col_name],
                          linestyle='-', marker='none', markersize=4, color=color_cl_proc,
-                         label=f'Stall {cl_col_name}', alpha=0.7)
+                         label=f'{cl_col_name} with Stall', alpha=0.7)
             if cl_col_name in df_plot_beta0_clcd_orig_filtered.columns:
                 ax1.plot(df_plot_beta0_clcd_orig_filtered['AoA'], df_plot_beta0_clcd_orig_filtered[cl_col_name],
                          linestyle=':', marker='o', markersize=6, color=color_cl_orig,
-                         label=f'Panel Method {cl_col_name}', alpha=0.6)
+                         label=f'{cl_col_name}', alpha=0.6)
             ax1.tick_params(axis='y', labelcolor=color_cl_proc)
 
             # Create a second Y-axis for CDtot
@@ -602,15 +602,15 @@ if __name__ == '__main__':
             if cd_col_name in df_plot_beta0_clcd_proc_filtered.columns:
                 ax2.plot(df_plot_beta0_clcd_proc_filtered['AoA'], df_plot_beta0_clcd_proc_filtered[cd_col_name],
                          linestyle='-', marker='none', markersize=4, color=color_cd_proc,
-                         label=f'Stall {cd_col_name}', alpha=0.7)
+                         label=f'{cd_col_name} with Stall', alpha=0.7)
             if cd_col_name in df_plot_beta0_clcd_orig_filtered.columns:
                 ax2.plot(df_plot_beta0_clcd_orig_filtered['AoA'], df_plot_beta0_clcd_orig_filtered[cd_col_name],
                          linestyle='--', marker='o', markersize=6, color=color_cd_orig,
-                         label=f'Panel method {cd_col_name}', alpha=0.6)
+                         label=f'{cd_col_name}', alpha=0.6)
             ax2.tick_params(axis='y', labelcolor=color_cd_proc)
 
             # Title and Limits
-            plt.title(f'{cl_col_name} and {cd_col_name} vs. AoA (Annular wing)', fontsize=14)
+            plt.title(f'{cl_col_name} and {cd_col_name} vs. AoA (Annular wing) for V = 20 m/s', fontsize=14)
             ax1.set_xlim(0 - EPSILON, 25 + EPSILON) # Set x-axis limits
 
             # Stall onset line (if applicable within the new range)
@@ -635,6 +635,53 @@ if __name__ == '__main__':
         else:
             print(f"No data available for {cl_col_name}/{cd_col_name} combined plot in AoA range 0-25 for Beta=0.")
     # --- END of new CL/CD plot section ---
+        # --- NEW: Moment Coefficient (CMy) Plot for Beta=0, Stall Modified, AoA 0-25 deg ---
+    cmy_col_name = 'CMy'
+    if cmy_col_name in df_plot_beta0_mirrored.columns:
+        # Filter data for AoA range 0 to 25 from the processed (stalled & mirrored) Beta=0 data
+        df_cmy_proc_filtered = df_plot_beta0_mirrored[
+            (df_plot_beta0_mirrored['AoA'] >= -EPSILON) & (df_plot_beta0_mirrored['AoA'] <= 25 + EPSILON)
+        ].copy()
+
+        # Filter original input data for comparison
+        df_cmy_orig_filtered = df_input_beta0_orig_plot[
+            (df_input_beta0_orig_plot['AoA'] >= -EPSILON) & (df_input_beta0_orig_plot['AoA'] <= 25 + EPSILON)
+        ].copy()
+        
+        if not df_cmy_proc_filtered.empty or not df_cmy_orig_filtered.empty:
+            plt.figure(figsize=(16, 9))
+
+            if cmy_col_name in df_cmy_proc_filtered.columns:
+                plt.plot(df_cmy_proc_filtered['AoA'], df_cmy_proc_filtered[cmy_col_name],
+                         linestyle='-', marker='none', color='purple',
+                         label=f'{cmy_col_name} with Stall', alpha=0.7)
+            
+            if cmy_col_name in df_cmy_orig_filtered.columns:
+                plt.plot(df_cmy_orig_filtered['AoA'], df_cmy_orig_filtered[cmy_col_name],
+                         linestyle=':', marker='o', markersize=6, color='orange',
+                         label=f'{cmy_col_name}', alpha=0.6)
+
+            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.ylabel(f'{cmy_col_name} (-)', fontsize=12)
+            plt.title(f'{cmy_col_name} vs. AoA (Annular Wing) for V = 20 m/s', fontsize=14)
+            plt.xlim(0 - EPSILON, 25 + EPSILON) # Set x-axis limits
+
+            if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
+                plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
+
+            plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
+            plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
+            plt.minorticks_on()
+            plt.axhline(0, color='black', linewidth=1.0) # Zero line for CMy
+
+            plt.legend(loc='best', fontsize=10)
+            plt.tight_layout()
+            plt.show()
+            plt.close()
+        else:
+            print(f"No data available for {cmy_col_name} plot in AoA range 0-25 for Beta=0.")
+    # --- END of new CMy plot section ---
+
 
     # --- NEW: Drag Polar Plot (CL vs CDtot) for Beta=0, Stall Modified, AoA 0-25 deg ---
     if cl_col_name in df_plot_beta0_mirrored.columns and cd_col_name in df_plot_beta0_mirrored.columns:
@@ -648,7 +695,7 @@ if __name__ == '__main__':
 
             plt.plot(df_drag_polar_filtered[cd_col_name], df_drag_polar_filtered[cl_col_name],
                      linestyle='-', marker='None', markersize=6, color='navy',
-                     label='V = 16 m/s')
+                     label='V = 20 m/s')
 
             plt.xlabel('CD (-)', fontsize=12)
             plt.ylabel('CL (-)', fontsize=12)
