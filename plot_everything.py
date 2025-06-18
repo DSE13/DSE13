@@ -356,7 +356,7 @@ def main():
             plot_has_data = True
         
         if plot_has_data:
-            plt.xlabel('$\\alpha$ ($\\degree$)')
+            plt.xlabel('$Angle of Attack, \\alpha$ ($\\degree$)')
             plt.ylabel('Percentage Error (%)')
             plt.title(f'$C_L$ and $C_D$ Percentage Error vs. AoA for $AR$ 1.5\n(Compared to Experimental Data)')
             plt.legend()
