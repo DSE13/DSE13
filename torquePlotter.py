@@ -107,7 +107,9 @@ def parse_prop_data(file_path, target_v_mph=33.0):
 
 def main():
     file_path = r'C:\Users\kilianseibl\Downloads\DSE13\PER3_41x41E.txt'
-    target_velocity_mph = 0
+    m_s_to_mph = 2.236936
+    m_s = 20
+    target_velocity_mph = m_s_to_mph * m_s
     target_velocity_mps = round(target_velocity_mph * 0.44704, 0)
 
     extracted_points = parse_prop_data(file_path, target_velocity_mph)
@@ -170,39 +172,85 @@ def main():
         print(f"\nApplied filter: Thrust <= {thrust_threshold}N. Using {len(thrust_plot_n_np)} data points for subsequent plots and regressions.")
 
     # --- Plot 1: Torque vs RPM (Filtered Data) ---
-    if len(rpm_plot_np) >= 3 and len(torque_plot_nm_np) >=3: # Need at least 3 points for quadratic
+    can_attempt_torque_regression = False
+    rpm_reg_torque_np = np.array([])  # For storing RPMs used in torque regression
+    torque_reg_nm_np = np.array([]) # For storing torques used in torque regression
+
+    # Ensure we have initial data (filtered by thrust_threshold) before attempting to filter for torque regression
+    if len(rpm_plot_np) > 0 and len(torque_plot_nm_np) > 0:
+        min_significant_torque = 0.002  # Define a threshold for "significant" torque for regression (N·m)
+        
+        # Find indices where torque in the initially filtered data (by thrust) is significant
+        significant_torque_indices = np.where(torque_plot_nm_np >= min_significant_torque)[0]
+
+        if len(significant_torque_indices) > 0:
+            # Use all points above the significance threshold for regression
+            _rpm_reg_temp_torque = rpm_plot_np[significant_torque_indices]
+            _torque_reg_temp_nm = torque_plot_nm_np[significant_torque_indices]
+
+            if len(_rpm_reg_temp_torque) >= 3:  # Need at least 3 points for a quadratic fit
+                rpm_reg_torque_np = _rpm_reg_temp_torque
+                torque_reg_nm_np = _torque_reg_temp_nm
+                can_attempt_torque_regression = True
+            else:
+                print(f"Not enough data points (found {len(_rpm_reg_temp_torque)} after filtering for Torque >= {min_significant_torque} N·m on data with Thrust <= {thrust_threshold}N) for quadratic Torque vs RPM regression.")
+        else:
+            print(f"No data points found with Torque >= {min_significant_torque} N·m (on data with Thrust <= {thrust_threshold}N) for Torque vs RPM regression.")
+    
+    if can_attempt_torque_regression:
         degree_torque_rpm = 2
-        coeffs_torque_rpm = np.polyfit(rpm_plot_np, torque_plot_nm_np, degree_torque_rpm)
+        coeffs_torque_rpm = np.polyfit(rpm_reg_torque_np, torque_reg_nm_np, degree_torque_rpm)
         poly_func_torque_rpm = np.poly1d(coeffs_torque_rpm)
-        print(rf"Regression for Torque vs RPM (Thrust $\leq$ {thrust_threshold}N, $Torque = a \cdot RPM^2 + b \cdot RPM + c$):")
+        
+        print(rf"Regression for Torque vs RPM (using data subset where original Thrust $\leq$ {thrust_threshold}N and Torque $\geq$ {min_significant_torque} N·m):")
+        print(rf"$Torque = a \cdot RPM^2 + b \cdot RPM + c$")
         print(f"a = {coeffs_torque_rpm[0]:.4e}")
         print(f"b = {coeffs_torque_rpm[1]:.4e}")
         print(f"c = {coeffs_torque_rpm[2]:.4e}")
-        
-        # Calculate R-squared for Torque vs RPM
-        y_pred_torque_rpm = poly_func_torque_rpm(rpm_plot_np)
-        ss_res_torque_rpm = np.sum((torque_plot_nm_np - y_pred_torque_rpm)**2)
-        ss_tot_torque_rpm = np.sum((torque_plot_nm_np - np.mean(torque_plot_nm_np))**2)
-        r_squared_torque_rpm = 1 - (ss_res_torque_rpm / ss_tot_torque_rpm) if ss_tot_torque_rpm > 0 else 0
-        print(f"R-squared (Torque vs RPM): {r_squared_torque_rpm:.4f}")
 
-        rpm_fit_line = np.linspace(min(rpm_plot_np), max(rpm_plot_np), 200)
-        torque_fit_line_rpm = poly_func_torque_rpm(rpm_fit_line)
+        # Calculate R-squared on the regression subset
+        y_pred_torque_rpm_reg = poly_func_torque_rpm(rpm_reg_torque_np)
+        ss_res_torque_rpm = np.sum((torque_reg_nm_np - y_pred_torque_rpm_reg)**2)
+        ss_tot_torque_rpm = np.sum((torque_reg_nm_np - np.mean(torque_reg_nm_np))**2)
+        r_squared_torque_rpm = 1 - (ss_res_torque_rpm / ss_tot_torque_rpm) if ss_tot_torque_rpm > 0 else 0
+        print(f"R-squared (on regression subset for Torque vs RPM): {r_squared_torque_rpm:.4f}")
+        
+        # Determine RPM range for plotting the fit line, based on the regression data
+        min_rpm_for_fit_torque = min(rpm_reg_torque_np) if len(rpm_reg_torque_np) > 0 else 0
+        max_rpm_for_fit_torque = max(rpm_reg_torque_np) if len(rpm_reg_torque_np) > 0 else 1
+        
+        if (max_rpm_for_fit_torque - min_rpm_for_fit_torque < 1e-9) : # Ensure a valid range for linspace
+             min_rpm_for_fit_torque -= 0.1 * abs(min_rpm_for_fit_torque) if abs(min_rpm_for_fit_torque)>1e-9 else 0.01
+             max_rpm_for_fit_torque += 0.1 * abs(max_rpm_for_fit_torque) if abs(max_rpm_for_fit_torque)>1e-9 else 0.01
+             if abs(min_rpm_for_fit_torque - max_rpm_for_fit_torque) < 1e-9: # check if they are still effectively the same
+                min_rpm_for_fit_torque -= 0.01 
+                max_rpm_for_fit_torque += 0.01
+        
+        rpm_fit_line_torque_plot = np.linspace(min_rpm_for_fit_torque, max_rpm_for_fit_torque, 200)
+        torque_fit_line_rpm_plot = poly_func_torque_rpm(rpm_fit_line_torque_plot)
 
         plt.figure(figsize = (my_width, my_width/golden))
-        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5, s=20)
-        plt.plot(rpm_fit_line, torque_fit_line_rpm, label=rf'Quadr. Regr. (R$^2$={r_squared_torque_rpm:.3f})', color='red', linestyle='--')
+        # Scatter plot ALL data points that met the initial thrust_threshold
+        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'All Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5, s=20)
+        # Plot the regression line based on the subset of data with significant torque
+        plt.plot(rpm_fit_line_torque_plot, torque_fit_line_rpm_plot, label=rf'Quadr. Regr. (R$^2$={r_squared_torque_rpm:.3f})', color='red', linestyle='--')
+        
         plt.xlabel('RPM [1/s]')
         plt.ylabel(rf'Torque [$N \cdot m$]')
-        plt.title(f'Torque vs. RPM \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
+        plt.title(f'V $\\approx$ {target_velocity_mps} m/s')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-    elif len(rpm_plot_np) > 0:
-        print(f"Not enough data points (found {len(rpm_plot_np)}) for quadratic Torque vs RPM regression with Thrust <= {thrust_threshold}N. Plotting points only.")
+
+    elif len(rpm_plot_np) > 0 and len(torque_plot_nm_np) > 0: 
+        # Fallback: Plot points only if regression couldn't be performed 
+        # (e.g. not enough significant torque data or initial data)
+        # but there was some data meeting the initial thrust_threshold.
+        min_significant_torque = 0.01 # Define here as well for the print message
+        print(f"Plotting points only for Torque vs RPM (Thrust <= {thrust_threshold}N). Regression on subset (Torque >= {min_significant_torque} N·m) failed or not enough data.")
         plt.figure(figsize = (my_width, my_width/golden))
-        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5)
+        plt.scatter(rpm_plot_np, torque_plot_nm_np, label=rf'Data (Thrust $\leq$ {thrust_threshold}N)', color='blue', zorder=5, s=20)
         plt.xlabel('RPM [1/s]')
         plt.ylabel(rf'Torque [$N \cdot m$]')
         plt.title(rf'Torque vs. RPM (Thrust $\leq$ {thrust_threshold}N, V $\approx$ {target_velocity_mps} m/s) - Points Only')
@@ -210,9 +258,8 @@ def main():
         plt.grid(True)
         plt.tight_layout()
         plt.show()
-    else:
+    else: # No data at all met the initial thrust_threshold
         print(f"No data to plot for Torque vs RPM with Thrust <= {thrust_threshold}N.")
-
 
     # --- Plot 2: Thrust vs RPM (Filtered Data) ---
     can_attempt_regression = False
@@ -282,7 +329,7 @@ def main():
         
         plt.xlabel(rf'RPM [1/s]') 
         plt.ylabel(rf'Thrust [N]')
-        plt.title(f'Thrust vs. RPM \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
+        plt.title(f'V $\\approx$ {target_velocity_mps} m/s')
         plt.legend()
         plt.grid(True)
         plt.tight_layout()
@@ -343,7 +390,7 @@ def main():
             #cbar = plt.colorbar(scatter, label='RPM')
             plt.xlabel(rf'Thrust [N]')
             plt.ylabel(rf'Power [W]')
-            plt.title(f'Power vs. Thrust \n(Thrust $\\leq$ {thrust_threshold}N, V $\\approx$ {target_velocity_mps} m/s)')
+            plt.title(f'V $\\approx$ {target_velocity_mps} m/s')
             plt.legend()
             plt.grid(True)
             plt.tight_layout()
