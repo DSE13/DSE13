@@ -468,7 +468,8 @@ if __name__ == '__main__':
     CL_DROP2_VAL, CL_DROP2_DUR = 0, 0
     CD_INITIAL_SLOPE, CD_STALL_MULTIPLIER, CD_TARGET_AOA = 0.015, 10.0, 40
     CM_RISE_VAL, CM_RISE_DUR, CM_PLATEAU_END_LABEL = 0.1, 8.0, 25
-    
+    CD_OFFSET = 0.0113097959184
+
     print(f"Attempting to load CSV from: {input_csv_file}")
     if not os.path.exists(input_csv_file):
         print(f"ERROR: CSV file not found at {input_csv_file}")
@@ -552,256 +553,250 @@ if __name__ == '__main__':
     coeffs_to_plot = {'CL': 'CL', 'CDtot': 'CDtot', 'CMy': 'CMy', 'CFx': 'CFx', 'CFy': 'CFy', 'CFz': 'CFz',
                       'CMx': 'CMx', 'CMz': 'CMz'}
 
-    # Plotting for Beta = 0 slice
-    df_plot_beta0_mirrored = df_fully_mirrored_and_stalled[np.isclose(df_fully_mirrored_and_stalled['Beta'].fillna(1e9), 0.0)].sort_values(by='AoA')
-    # For comparison, use the original Beta=0 slice before any processing
-    df_input_beta0_orig_plot = df_input_data[
-        (np.isclose(df_input_data['Beta'].fillna(1e9), 0.0)) #& (df_input_data['AoA'] >= -EPSILON) # Original might have negative AoA, we'll filter later
-    ].sort_values(by='AoA')
+   # --- Prepare data for specific Beta=0, AoA 0-25 deg plots ---
+    df_plot_beta0_mirrored_full_range = df_fully_mirrored_and_stalled[
+        np.isclose(df_fully_mirrored_and_stalled['Beta'].fillna(1e9), 0.0)
+    ].sort_values(by='AoA').copy()
+
+    df_input_beta0_orig_full_range = df_input_data[
+        np.isclose(df_input_data['Beta'].fillna(1e9), 0.0)
+    ].sort_values(by='AoA').copy()
+
+    # Filtered and modified data for AoA 0-25 range plots
+    df_beta0_proc_plot_range = df_plot_beta0_mirrored_full_range[
+        (df_plot_beta0_mirrored_full_range['AoA'] >= -EPSILON) & (df_plot_beta0_mirrored_full_range['AoA'] <= 25 + EPSILON)
+    ].copy()
+    cmy_col_name = 'CMy'
+    if not df_beta0_proc_plot_range.empty:
+        if 'CDtot' in df_beta0_proc_plot_range.columns:
+            df_beta0_proc_plot_range['CDtot_modified'] = df_beta0_proc_plot_range['CDtot'] + CD_OFFSET
+        else:
+            print("Warning: 'CDtot' column not found in processed data for CD modification.")
+            df_beta0_proc_plot_range['CDtot_modified'] = np.nan # Ensure column exists
+
+        if 'CL' in df_beta0_proc_plot_range.columns:
+            df_beta0_proc_plot_range['CL_lower'] = df_beta0_proc_plot_range['CL'] * 0.9
+            df_beta0_proc_plot_range['CL_upper'] = df_beta0_proc_plot_range['CL'] * 1.1
+        else:
+            print("Warning: 'CL' column not found in processed data for CL error bounds.")
+            df_beta0_proc_plot_range['CL_lower'] = np.nan
+            df_beta0_proc_plot_range['CL_upper'] = np.nan
+        if cmy_col_name in df_beta0_proc_plot_range.columns: 
+            df_beta0_proc_plot_range.loc[:, 'CMy_lower'] = df_beta0_proc_plot_range[cmy_col_name] * 0.75
+            df_beta0_proc_plot_range.loc[:, 'CMy_upper'] = df_beta0_proc_plot_range[cmy_col_name] * 1.25
+        else:
+            print(f"Warning: '{cmy_col_name}' column not found in processed data for CMy error bounds.")
+            df_beta0_proc_plot_range.loc[:, 'CMy_lower'] = np.nan
+            df_beta0_proc_plot_range.loc[:, 'CMy_upper'] = np.nan
+    df_beta0_proc_plot_range = df_beta0_proc_plot_range.sort_values(by='AoA')
 
 
-    # --- NEW: Combined CL and CDtot plot for Beta=0, AoA 0-25 deg ---
+    df_beta0_input_plot_range = df_input_beta0_orig_full_range[
+        (df_input_beta0_orig_full_range['AoA'] >= -EPSILON) & (df_input_beta0_orig_full_range['AoA'] <= 25 + EPSILON)
+    ].copy().sort_values(by='AoA')
+
+
     cl_col_name = 'CL'
-    cd_col_name = 'CDtot'
+    cd_col_name = 'CDtot' # Original column name
+    cd_modified_col_name = 'CDtot_modified'
 
-    if cl_col_name in df_plot_beta0_mirrored.columns and cd_col_name in df_plot_beta0_mirrored.columns:
-        # Filter data for AoA range 0 to 25
-        df_plot_beta0_clcd_proc_filtered = df_plot_beta0_mirrored[
-            (df_plot_beta0_mirrored['AoA'] >= -EPSILON) & (df_plot_beta0_mirrored['AoA'] <= 25 + EPSILON)
-        ].copy()
+    # # --- Combined CL and MODIFIED CDtot plot for Beta=0, AoA 0-25 deg ---
+    # if cl_col_name in df_beta0_proc_plot_range.columns and cd_modified_col_name in df_beta0_proc_plot_range.columns:
+    #     if not df_beta0_proc_plot_range.empty or not df_beta0_input_plot_range.empty:
+    #         fig, ax1 = plt.subplots(figsize=(16, 9))
 
-        df_plot_beta0_clcd_orig_filtered = df_input_beta0_orig_plot[
-            (df_input_beta0_orig_plot['AoA'] >= -EPSILON) & (df_input_beta0_orig_plot['AoA'] <= 25 + EPSILON)
-        ].copy()
+    #         color_cl_proc = 'red'
+    #         color_cl_orig = 'blue'
+    #         ax1.set_xlabel('AoA (degrees)', fontsize=12)
+    #         ax1.set_ylabel(cl_col_name, color=color_cl_proc, fontsize=12)
 
-        if not df_plot_beta0_clcd_proc_filtered.empty or not df_plot_beta0_clcd_orig_filtered.empty:
-            fig, ax1 = plt.subplots(figsize=(16, 9))
+    #         ax1.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range[cl_col_name],
+    #                  linestyle='-', marker='none', color=color_cl_proc,
+    #                  label=f'{cl_col_name} with Stall', alpha=0.7)
+    #         if cl_col_name in df_beta0_input_plot_range.columns:
+    #             ax1.plot(df_beta0_input_plot_range['AoA'], df_beta0_input_plot_range[cl_col_name],
+    #                      linestyle=':', marker='o', markersize=6, color=color_cl_orig,
+    #                      label=f'Original Input {cl_col_name}', alpha=0.6)
+    #         ax1.tick_params(axis='y', labelcolor=color_cl_proc)
 
-            # Plot CL (Left Y-axis)
-            color_cl_proc = 'red'
-            color_cl_orig = 'blue'
-            ax1.set_xlabel('AoA (degrees)', fontsize=12)
-            ax1.set_ylabel(cl_col_name, color=color_cl_proc, fontsize=12)
+    #         ax2 = ax1.twinx()
+    #         color_cd_proc = 'green'
+    #         color_cd_orig = 'purple'
+    #         ax2.set_ylabel(f'Modified {cd_col_name}', color=color_cd_proc, fontsize=12)
 
-            if cl_col_name in df_plot_beta0_clcd_proc_filtered.columns:
-                ax1.plot(df_plot_beta0_clcd_proc_filtered['AoA'], df_plot_beta0_clcd_proc_filtered[cl_col_name],
-                         linestyle='-', marker='none', markersize=4, color=color_cl_proc,
-                         label=f'{cl_col_name} with Stall', alpha=0.7)
-            if cl_col_name in df_plot_beta0_clcd_orig_filtered.columns:
-                ax1.plot(df_plot_beta0_clcd_orig_filtered['AoA'], df_plot_beta0_clcd_orig_filtered[cl_col_name],
-                         linestyle=':', marker='o', markersize=6, color=color_cl_orig,
-                         label=f'{cl_col_name}', alpha=0.6)
-            ax1.tick_params(axis='y', labelcolor=color_cl_proc)
+    #         ax2.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range[cd_modified_col_name],
+    #                  linestyle='-', marker='none', color=color_cd_proc,
+    #                  label=f'Modified {cd_col_name} with Stall', alpha=0.7)
+    #         if cd_col_name in df_beta0_input_plot_range.columns: # Plot original CD for comparison
+    #             ax2.plot(df_beta0_input_plot_range['AoA'], df_beta0_input_plot_range[cd_col_name],
+    #                      linestyle='--', marker='o', markersize=6, color=color_cd_orig,
+    #                      label=f'Original Input {cd_col_name}', alpha=0.6)
+    #         ax2.tick_params(axis='y', labelcolor=color_cd_proc)
 
-            # Create a second Y-axis for CDtot
-            ax2 = ax1.twinx()
-            color_cd_proc = 'green'
-            color_cd_orig = 'purple'
-            ax2.set_ylabel(cd_col_name, color=color_cd_proc, fontsize=12)
+    #         plt.title(f'{cl_col_name} and Modified {cd_col_name} vs. AoA (Annular wing) for V = 20 m/s', fontsize=14)
+    #         ax1.set_xlim(0 - EPSILON, 25 + EPSILON)
+    #         if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
+    #             ax1.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
+    #         ax1.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
+    #         ax1.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
+    #         ax1.minorticks_on()
+    #         ax1.axhline(0, color='black', linewidth=1.0)
+    #         lines1, labels1 = ax1.get_legend_handles_labels()
+    #         lines2, labels2 = ax2.get_legend_handles_labels()
+    #         ax2.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=10)
+    #         plt.tight_layout()
+    #         plt.show()
+    #         plt.close()
+    #     else:
+    #         print(f"No data available for CL/Modified CD combined plot in AoA range 0-25 for Beta=0.")
 
-            if cd_col_name in df_plot_beta0_clcd_proc_filtered.columns:
-                ax2.plot(df_plot_beta0_clcd_proc_filtered['AoA'], df_plot_beta0_clcd_proc_filtered[cd_col_name],
-                         linestyle='-', marker='none', markersize=4, color=color_cd_proc,
-                         label=f'{cd_col_name} with Stall', alpha=0.7)
-            if cd_col_name in df_plot_beta0_clcd_orig_filtered.columns:
-                ax2.plot(df_plot_beta0_clcd_orig_filtered['AoA'], df_plot_beta0_clcd_orig_filtered[cd_col_name],
-                         linestyle='--', marker='o', markersize=6, color=color_cd_orig,
-                         label=f'{cd_col_name}', alpha=0.6)
-            ax2.tick_params(axis='y', labelcolor=color_cd_proc)
+    # --- NEW: Modified CDtot vs. AoA Plot for Beta=0, Stall Modified, AoA 0-25 deg ---
+    if cd_modified_col_name in df_beta0_proc_plot_range.columns:
+        if not df_beta0_proc_plot_range.empty or not df_beta0_input_plot_range.empty:
+            plt.figure(figsize=(16, 9))
 
-            # Title and Limits
-            plt.title(f'{cl_col_name} and {cd_col_name} vs. AoA (Annular wing) for V = 20 m/s', fontsize=14)
-            ax1.set_xlim(0 - EPSILON, 25 + EPSILON) # Set x-axis limits
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range[cd_modified_col_name],
+                     linestyle='-', marker='none', color='darkcyan',
+                     label=f'$C_{{D}}$', alpha=0.7)
 
-            # Stall onset line (if applicable within the new range)
+            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.ylabel(f'$C_{{D}}$(-)', fontsize=12)
+            plt.title(f'$C_{{D}}$ vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14)
+            plt.xlim(0 - EPSILON, 25 + EPSILON)
             if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
-                ax1.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
-
-            # Grids and zero lines
-            ax1.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
-            ax1.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
-            ax1.minorticks_on()
-            ax1.axhline(0, color='black', linewidth=1.0) # For CL
-            # # ax2.axhline(0, color='darkgray', linewidth=1.0, linestyle=':') # CDtot usually starts > 0
-
-            # Legends
-            lines1, labels1 = ax1.get_legend_handles_labels()
-            lines2, labels2 = ax2.get_legend_handles_labels()
-            ax2.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=10)
-
+                plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
+            plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
+            plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
+            plt.minorticks_on()
+            plt.legend(loc='best', fontsize=10)
             plt.tight_layout()
             plt.show()
             plt.close()
         else:
-            print(f"No data available for {cl_col_name}/{cd_col_name} combined plot in AoA range 0-25 for Beta=0.")
-    # --- END of new CL/CD plot section ---
-        # --- NEW: Moment Coefficient (CMy) Plot for Beta=0, Stall Modified, AoA 0-25 deg ---
-    cmy_col_name = 'CMy'
-    if cmy_col_name in df_plot_beta0_mirrored.columns:
-        # Filter data for AoA range 0 to 25 from the processed (stalled & mirrored) Beta=0 data
-        df_cmy_proc_filtered = df_plot_beta0_mirrored[
-            (df_plot_beta0_mirrored['AoA'] >= -EPSILON) & (df_plot_beta0_mirrored['AoA'] <= 25 + EPSILON)
-        ].copy()
+            print(f"No data available for Modified {cd_col_name} plot in AoA range 0-25 for Beta=0.")
 
-        # Filter original input data for comparison
-        df_cmy_orig_filtered = df_input_beta0_orig_plot[
-            (df_input_beta0_orig_plot['AoA'] >= -EPSILON) & (df_input_beta0_orig_plot['AoA'] <= 25 + EPSILON)
-        ].copy()
-        
-        if not df_cmy_proc_filtered.empty or not df_cmy_orig_filtered.empty:
+
+    # --- Moment Coefficient (CMy) with Error Bounds Plot for Beta=0, Stall Modified, AoA 0-25 deg ---
+    cmy_col_name = 'CMy'  
+    # Ensure CMy and its calculated bounds columns exist
+    if all(c in df_beta0_proc_plot_range.columns for c in [cmy_col_name, 'CMy_lower', 'CMy_upper']):
+        if not df_beta0_proc_plot_range.empty: 
             plt.figure(figsize=(16, 9))
 
-            if cmy_col_name in df_cmy_proc_filtered.columns:
-                plt.plot(df_cmy_proc_filtered['AoA'], df_cmy_proc_filtered[cmy_col_name],
-                         linestyle='-', marker='none', color='purple',
-                         label=f'{cmy_col_name} with Stall', alpha=0.7)
-            
-            if cmy_col_name in df_cmy_orig_filtered.columns:
-                plt.plot(df_cmy_orig_filtered['AoA'], df_cmy_orig_filtered[cmy_col_name],
-                         linestyle=':', marker='o', markersize=6, color='orange',
-                         label=f'{cmy_col_name}', alpha=0.6)
+            # Plot nominal CMy from processed data
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range[cmy_col_name],
+                     linestyle='-', marker='none', color='purple',
+                     label=f'Nominal $C_{{my}}$ ', alpha=0.9) # Using LaTeX for CMy
+
+            # Plot CMy error bounds (dashed lines)
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range['CMy_lower'],
+                     linestyle='--', marker='none', color='mediumpurple', # Lighter shade for bounds
+                     label=f'$C_{{my}}$ +/- 25% Bound', alpha=0.7) # Combined label for bounds
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range['CMy_upper'],
+                     linestyle='--', marker='none', color='mediumpurple', alpha=0.7) # No separate label for upper bound line
+
+            # Fill the region between error bounds
+            plt.fill_between(df_beta0_proc_plot_range['AoA'],
+                             df_beta0_proc_plot_range['CMy_lower'],
+                             df_beta0_proc_plot_range['CMy_upper'],
+                             color='lavender', alpha=0.4, label='25% Error Region') # Light fill color
+
+
 
             plt.xlabel('AoA (degrees)', fontsize=12)
-            plt.ylabel(f'{cmy_col_name} (-)', fontsize=12)
-            plt.title(f'{cmy_col_name} vs. AoA (Annular Wing) for V = 20 m/s', fontsize=14)
-            plt.xlim(0 - EPSILON, 25 + EPSILON) # Set x-axis limits
-
+            plt.ylabel(f'$C_{{my}}$ (-)', fontsize=12) # Using LaTeX for C_my in label
+            plt.title(f'$C_{{my}}$ with 25% Error Bounds vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14) # Using LaTeX in title
+            plt.xlim(0 - EPSILON, 25 + EPSILON)
             if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
                 plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
-
             plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
             plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
             plt.minorticks_on()
             plt.axhline(0, color='black', linewidth=1.0) # Zero line for CMy
-
             plt.legend(loc='best', fontsize=10)
             plt.tight_layout()
             plt.show()
             plt.close()
         else:
-            print(f"No data available for {cmy_col_name} plot in AoA range 0-25 for Beta=0.")
-    # --- END of new CMy plot section ---
+            print(f"No processed data available for {cmy_col_name} with error bounds plot in AoA range 0-25 for Beta=0.")
+    else:
+        # Check which specific columns are missing for a more informative warning
+        missing_cols_cmy = [c for c in [cmy_col_name, 'CMy_lower', 'CMy_upper'] if c not in df_beta0_proc_plot_range.columns]
+        print(f"Warning: CMy plot with error bounds skipped due to missing columns: {missing_cols_cmy} in df_beta0_proc_plot_range.")
+
+    # --- Lift Coefficient (CL) with Error Bounds Plot for Beta=0, Stall Modified, AoA 0-25 deg ---
+    if cl_col_name in df_beta0_proc_plot_range.columns and 'CL_lower' in df_beta0_proc_plot_range.columns:
+        if not df_beta0_proc_plot_range.empty:
+            plt.figure(figsize=(16, 9))
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range[cl_col_name],
+                     linestyle='-', marker='none', color='red',
+                     label=f'Nominal $C_{{L}}$', alpha=0.9)
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range['CL_lower'],
+                     linestyle='--', marker='none', color='gray',
+                     label=f'$C_{{L}}$ -10% Bound', alpha=0.7)
+            plt.plot(df_beta0_proc_plot_range['AoA'], df_beta0_proc_plot_range['CL_upper'],
+                     linestyle='--', marker='none', color='gray',
+                     label=f'$C_{{L}}$ +10% Bound', alpha=0.7)
+            plt.fill_between(df_beta0_proc_plot_range['AoA'], 
+                             df_beta0_proc_plot_range['CL_lower'], 
+                             df_beta0_proc_plot_range['CL_upper'],
+                             color='lightcoral', alpha=0.3, label='Error Region')
+            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.ylabel(f'$C_{{L}}$ (-)', fontsize=12)
+            plt.title(f'$C_{{L}}$ with 10% Error Bounds vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14)
+            plt.xlim(0 - EPSILON, 25 + EPSILON)
+            if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
+                plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
+            plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
+            plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
+            plt.minorticks_on()
+            plt.axhline(0, color='black', linewidth=1.0)
+            plt.legend(loc='best', fontsize=10)
+            plt.tight_layout()
+            plt.show()
+            plt.close()
+        else:
+            print(f"No data available for {cl_col_name} with error bounds plot in AoA range 0-25 for Beta=0.")
+
+    # --- UPDATED Drag Polar Plot (CL Error Band vs. Modified CDtot) for Beta=0, AoA 0-25 deg ---
+    if all(c in df_beta0_proc_plot_range.columns for c in [cl_col_name, 'CL_lower', 'CL_upper', cd_modified_col_name]):
+        if not df_beta0_proc_plot_range.empty:
+            # Data is already sorted by AoA in df_beta0_proc_plot_range
+            
+            plt.figure(figsize=(12, 8))
+
+            # Plot nominal CL vs Modified CD
+            plt.plot(df_beta0_proc_plot_range[cd_modified_col_name], df_beta0_proc_plot_range[cl_col_name],
+                     linestyle='-', marker='None', color='navy',
+                     )
+
+            # Create polygon for fill_between effect for the CL error band
+            # Ensure data is sorted by AoA for correct path
+            x_poly = np.concatenate((df_beta0_proc_plot_range[cd_modified_col_name].values, 
+                                     df_beta0_proc_plot_range[cd_modified_col_name].values[::-1]))
+            y_poly = np.concatenate((df_beta0_proc_plot_range['CL_lower'].values, 
+                                     df_beta0_proc_plot_range['CL_upper'].values[::-1]))
+            
+            plt.fill(x_poly, y_poly, color='skyblue', alpha=0.4, label='+/- 10% Error Band')
+            
+            # Optionally plot boundary lines explicitly if desired over the fill
+            plt.plot(df_beta0_proc_plot_range[cd_modified_col_name], df_beta0_proc_plot_range['CL_lower'],
+                     linestyle='--', marker='None', color='steelblue', alpha=0.6)
+            plt.plot(df_beta0_proc_plot_range[cd_modified_col_name], df_beta0_proc_plot_range['CL_upper'],
+                     linestyle='--', marker='None', color='steelblue', alpha=0.6)
 
 
-    # --- NEW: Drag Polar Plot (CL vs CDtot) for Beta=0, Stall Modified, AoA 0-25 deg ---
-    if cl_col_name in df_plot_beta0_mirrored.columns and cd_col_name in df_plot_beta0_mirrored.columns:
-        # Filter data for AoA range 0 to 25 from the processed (stalled & mirrored) Beta=0 data
-        df_drag_polar_filtered = df_plot_beta0_mirrored[
-            (df_plot_beta0_mirrored['AoA'] >= -EPSILON) & (df_plot_beta0_mirrored['AoA'] <= 25 + EPSILON)
-        ].copy()
-
-        if not df_drag_polar_filtered.empty:
-            plt.figure(figsize=(12, 8)) # Adjusted figure size for drag polar
-
-            plt.plot(df_drag_polar_filtered[cd_col_name], df_drag_polar_filtered[cl_col_name],
-                     linestyle='-', marker='None', markersize=6, color='navy',
-                     label='V = 20 m/s')
-
-            plt.xlabel('CD (-)', fontsize=12)
-            plt.ylabel('CL (-)', fontsize=12)
-            plt.title('Drag Polar (Annular Wing)', fontsize=14)
+            plt.xlabel(f'$C_{{D}}$(-)', fontsize=12)
+            plt.ylabel(f'$C_{{L}} (-)$', fontsize=12)
+            plt.title('Drag Polar with Error Band (L.O.R.A.X. Drone) for $V = 20 m/s$', fontsize=14)
             
             plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
             plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
             plt.minorticks_on()
             
-            # Optional: Add lines for L/D max if desired, would require calculation
-            # Example: Find point of max L/D
-            # if not df_drag_polar_filtered.empty and 'L/D' in df_drag_polar_filtered.columns:
-            #     df_drag_polar_filtered_ld = df_drag_polar_filtered.dropna(subset=['L/D'])
-            #     if not df_drag_polar_filtered_ld.empty:
-            #         max_ld_row = df_drag_polar_filtered_ld.loc[df_drag_polar_filtered_ld['L/D'].idxmax()]
-            #         plt.plot([0, max_ld_row[cd_col_name]], [0, max_ld_row[cl_col_name]], 
-            #                  color='gray', linestyle='--', linewidth=1, label=f'Max L/D ~ {max_ld_row["L/D"]:.2f}')
-            #         plt.scatter(max_ld_row[cd_col_name], max_ld_row[cl_col_name], color='gold', s=100, zorder=5, edgecolors='black', label='Point of Max L/D')
-
-
             plt.legend(loc='best', fontsize=10)
             plt.tight_layout()
             plt.show()
             plt.close()
-
-    # --- Original loop for individual plots (can be kept or modified) ---
-    for coeff_col_name, coeff_label_short in coeffs_to_plot.items():
-        # Skip individual CL and CDtot plots if you only want the combined one for Beta=0
-        # if coeff_col_name in [cl_col_name, cd_col_name]:
-        #     continue
-
-        plt.figure(figsize=(16, 9))
-
-        # Plot original input Beta=0 data (typically positive AoA only for comparison)
-        df_input_beta0_orig_plot_filtered_for_individual = df_input_beta0_orig_plot[df_input_beta0_orig_plot['AoA'] >= -EPSILON]
-        if coeff_col_name in df_input_beta0_orig_plot_filtered_for_individual.columns:
-            plt.plot(df_input_beta0_orig_plot_filtered_for_individual['AoA'], df_input_beta0_orig_plot_filtered_for_individual[coeff_col_name],
-                     linestyle=':', marker='o', markersize=6, color='blue', label='Original Input Data (Beta=0, Positive AoA)', alpha=0.6)
-
-        # Plot fully processed Beta=0 data (stalled and AoA-mirrored)
-        if coeff_col_name in df_plot_beta0_mirrored.columns:
-            plt.plot(df_plot_beta0_mirrored['AoA'], df_plot_beta0_mirrored[coeff_col_name],
-                     linestyle='-', marker='.', markersize=4, color='red', label='Processed Data (Beta=0, Stalled & Mirrored AoA)', alpha=0.7)
         else:
-            print(f"Warning: Column {coeff_col_name} not found for plotting Beta=0 (processed).")
-
-        plt.xlabel('AoA (degrees)', fontsize=12)
-        plt.ylabel(f'{coeff_label_short}', fontsize=12)
-        plt.title(f'{coeff_label_short} vs. AoA (Beta=0) - Axisymmetric Mirroring', fontsize=14)
-
-        plt.axvline(STALL_AOA_POINT, color='green', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
-        plt.axvline(-STALL_AOA_POINT, color='purple', linestyle='--', linewidth=1.2, label=f'Mirrored Stall Onset ({-STALL_AOA_POINT:.1f} deg)')
-
-        plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
-        plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
-        plt.minorticks_on(); plt.axhline(0, color='black', linewidth=1.0); plt.axvline(0, color='black', linewidth=1.0)
-
-        min_aoa_plot_limit, max_aoa_plot_limit = - (CM_PLATEAU_END_LABEL + 5), (CM_PLATEAU_END_LABEL + 5)
-        if not df_plot_beta0_mirrored.empty:
-            min_aoa_data = df_plot_beta0_mirrored['AoA'].min()
-            max_aoa_data = df_plot_beta0_mirrored['AoA'].max()
-            padding = max((max_aoa_data - min_aoa_data) * 0.05, 5.0)
-            min_aoa_plot_limit = min_aoa_data - padding
-            max_aoa_plot_limit = max_aoa_data + padding
-
-        plt.xlim(left=min_aoa_plot_limit, right=max_aoa_plot_limit)
-
-        plt.legend(loc='best', fontsize=10)
-        plt.tight_layout()
-        plt.show()
-        plt.close()
-
-
-    # # Optional: Plotting for a non-zero Beta slice to show Beta mirroring effect
-    # target_beta_for_plot = 2.0 # Example Beta value from your CSV
-    # # ... (rest of your plotting code for non-zero Beta) ...
-    # df_plot_beta_target_mirrored = df_fully_mirrored_and_stalled[
-    #     np.isclose(df_fully_mirrored_and_stalled['Beta'].fillna(1e9), target_beta_for_plot)
-    # ].sort_values(by='AoA')
-    
-    # df_plot_beta_neg_target_mirrored = df_fully_mirrored_and_stalled[
-    #     np.isclose(df_fully_mirrored_and_stalled['Beta'].fillna(1e9), -target_beta_for_plot)
-    # ].sort_values(by='AoA')
-
-    # if not df_plot_beta_target_mirrored.empty and not df_plot_beta_neg_target_mirrored.empty:
-    #     print(f"\nGenerating plots for Beta = +/-{target_beta_for_plot} deg...")
-    #     for coeff_col_name, coeff_label_short in coeffs_to_plot.items():
-    #         plt.figure(figsize=(16, 9))
-            
-    #         if coeff_col_name in df_plot_beta_target_mirrored.columns:
-    #             plt.plot(df_plot_beta_target_mirrored['AoA'], df_plot_beta_target_mirrored[coeff_col_name], 
-    #                      linestyle='-', marker='.', markersize=4, color='orange', label=f'Processed Data (Beta={target_beta_for_plot:.0f} deg)', alpha=0.7)
-            
-    #         if coeff_col_name in df_plot_beta_neg_target_mirrored.columns:
-    #             plt.plot(df_plot_beta_neg_target_mirrored['AoA'], df_plot_beta_neg_target_mirrored[coeff_col_name], 
-    #                      linestyle='--', marker='x', markersize=4, color='magenta', label=f'Processed Data (Beta={-target_beta_for_plot:.0f} deg, Mirrored Beta)', alpha=0.7)
-
-    #         plt.xlabel('AoA (degrees)', fontsize=12)
-    #         plt.ylabel(f'{coeff_label_short}', fontsize=12)
-    #         plt.title(f'{coeff_label_short} vs. AoA (Beta=+/-{target_beta_for_plot:.0f} deg) - Axisymmetric Mirroring', fontsize=14)
-    #         plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7) 
-    #         plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)
-    #         plt.minorticks_on(); plt.axhline(0, color='black', linewidth=1.0); plt.axvline(0, color='black', linewidth=1.0)
-    #         plt.legend(loc='best', fontsize=10)
-    #         plt.tight_layout()
-    #         plt.show()
-    #         plt.close() # Added close here
-    else:
-        print(f"Could not find sufficient data for Beta=+/-{target_beta_for_plot} to generate comparison plots.")
+            print(f"No data available for updated drag polar plot in AoA range 0-25 for Beta=0.")
