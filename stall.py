@@ -659,7 +659,7 @@ if __name__ == '__main__':
                      linestyle='-', marker='none', color='darkcyan',
                      label=f'$C_{{D}}$', alpha=0.7)
 
-            plt.xlabel('$\\alpha$ ($\\degree$)', fontsize=12)
+            plt.xlabel('$Angle of Attack, \\alpha$ ($\\degree$)', fontsize=12)
             plt.ylabel(f'$C_{{D}}$(-)', fontsize=12)
             plt.title(f'$V = 20$ $m/s$', fontsize=14)
             plt.xlim(0 - EPSILON, 25 + EPSILON)

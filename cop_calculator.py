@@ -167,8 +167,8 @@ def calculate_and_plot_cop_from_file(file_path, x_mref_c, delimiter=None):
     plt.figure(figsize=(10, 7))
     plt.plot(alphas_deg, xcp_c_values, linestyle='-', color='b')
 
-    plt.xlabel(" $\\alpha$ (degrees)")
-    plt.ylabel("$x_{cp}/c_{ref}$")
+    plt.xlabel(" Angle of Attack, $\\alpha$ (degrees)")
+    plt.ylabel("$\\frac{x_{cp}}{c_{ref}}$")
     plot_title = (f"$V = 20$ $m/s$")
     plt.title(plot_title)
     plt.legend()
