@@ -659,9 +659,9 @@ if __name__ == '__main__':
                      linestyle='-', marker='none', color='darkcyan',
                      label=f'$C_{{D}}$', alpha=0.7)
 
-            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.xlabel('$\\alpha$ ($\\degree$)', fontsize=12)
             plt.ylabel(f'$C_{{D}}$(-)', fontsize=12)
-            plt.title(f'$C_{{D}}$ vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14)
+            plt.title(f'$V = 20$ $m/s$', fontsize=14)
             plt.xlim(0 - EPSILON, 25 + EPSILON)
             if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
                 plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
@@ -703,9 +703,9 @@ if __name__ == '__main__':
 
 
 
-            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.xlabel('$\\alpha$ ($\\degree$)', fontsize=12)
             plt.ylabel(f'$C_{{my}}$ (-)', fontsize=12) # Using LaTeX for C_my in label
-            plt.title(f'$C_{{my}}$ with 25% Error Bounds vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14) # Using LaTeX in title
+            plt.title(f'$V = 20$ $m/s$', fontsize=14) # Using LaTeX in title
             plt.xlim(0 - EPSILON, 25 + EPSILON)
             if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
                 plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
@@ -741,9 +741,9 @@ if __name__ == '__main__':
                              df_beta0_proc_plot_range['CL_lower'], 
                              df_beta0_proc_plot_range['CL_upper'],
                              color='lightcoral', alpha=0.3, label='Error Region')
-            plt.xlabel('AoA (degrees)', fontsize=12)
+            plt.xlabel('$\\alpha$ ($\\degree$)', fontsize=12)
             plt.ylabel(f'$C_{{L}}$ (-)', fontsize=12)
-            plt.title(f'$C_{{L}}$ with 10% Error Bounds vs. AoA (L.O.R.A.X.) for V = 20 m/s', fontsize=14)
+            plt.title(f'$V = 20$ $m/s$', fontsize=14)
             plt.xlim(0 - EPSILON, 25 + EPSILON)
             if STALL_AOA_POINT >= 0 and STALL_AOA_POINT <= 25:
                 plt.axvline(STALL_AOA_POINT, color='black', linestyle='--', linewidth=1.2, label=f'Stall Onset ({STALL_AOA_POINT:.1f} deg)')
@@ -788,7 +788,7 @@ if __name__ == '__main__':
 
             plt.xlabel(f'$C_{{D}}$(-)', fontsize=12)
             plt.ylabel(f'$C_{{L}} (-)$', fontsize=12)
-            plt.title('Drag Polar with Error Band (L.O.R.A.X. Drone) for $V = 20 m/s$', fontsize=14)
+            plt.title('$V = 20$ $m/s$', fontsize=14)
             
             plt.grid(True, which='major', linestyle='-', linewidth=0.7, alpha=0.7)
             plt.grid(True, which='minor', linestyle=':', linewidth=0.4, alpha=0.5)

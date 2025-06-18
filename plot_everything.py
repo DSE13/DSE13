@@ -343,22 +343,22 @@ def main():
         plot_has_data = False
 
         if 'CL_Error_VSP (%)' in error_data and error_data['CL_Error_VSP (%)'].notna().any():
-            plt.plot(error_data['AoA'], error_data['CL_Error_VSP (%)'], linestyle='-', label='Panel CL Error (%)', color='blue')
+            plt.plot(error_data['AoA'], error_data['CL_Error_VSP (%)'], linestyle='-', label='Panel $C_L$ Error (%)', color='blue')
             plot_has_data = True
         if 'CD_Error_VSP (%)' in error_data and error_data['CD_Error_VSP (%)'].notna().any():
-            plt.plot(error_data['AoA'], error_data['CD_Error_VSP (%)'],  linestyle='-', label='Panel CD Error (%)', color='red')
+            plt.plot(error_data['AoA'], error_data['CD_Error_VSP (%)'],  linestyle='-', label='Panel $C_D$ Error (%)', color='red')
             plot_has_data = True
         if 'CL_Error_VLM (%)' in error_data and error_data['CL_Error_VLM (%)'].notna().any():
-            plt.plot(error_data['AoA'], error_data['CL_Error_VLM (%)'], linestyle='--', label='VLM CL Error (%)', color='blue')
+            plt.plot(error_data['AoA'], error_data['CL_Error_VLM (%)'], linestyle='--', label='VLM $C_L$ Error (%)', color='blue')
             plot_has_data = True
         if 'CD_Error_VLM (%)' in error_data and error_data['CD_Error_VLM (%)'].notna().any():
-            plt.plot(error_data['AoA'], error_data['CD_Error_VLM (%)'], linestyle='--', label='VLM CD Error (%)', color='red')
+            plt.plot(error_data['AoA'], error_data['CD_Error_VLM (%)'], linestyle='--', label='VLM $C_D$ Error (%)', color='red')
             plot_has_data = True
         
         if plot_has_data:
-            plt.xlabel('Angle of Attack (deg)')
+            plt.xlabel('$\\alpha$ ($\\degree$)')
             plt.ylabel('Percentage Error (%)')
-            plt.title(f'CL and CD Percentage Error vs. AoA for {ar_label}\n(Compared to Experimental Data)')
+            plt.title(f'$C_L$ and $C_D$ Percentage Error vs. AoA for $AR$ 1.5\n(Compared to Experimental Data)')
             plt.legend()
             plt.grid(True)
             plt.axhline(0, color='black', linewidth=0.5, linestyle=':') # Zero error line
