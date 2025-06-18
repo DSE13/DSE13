@@ -517,7 +517,7 @@ if not np.isnan(rpm_prop1_optimal_interp) and D_prop1_meters > 0 and not df_prop
 
 plt.xlabel('Advance Ratio (J)')
 plt.ylabel('Propulsive Efficiency (Pe)')
-plt.title(f'Propulsive Efficiency vs. Advance Ratio\n(Thrust $\\approx$ {TARGET_THRUST_N:.1f}N, Cruise = {CRUISE_SPEED_MPS:.1f} m/s)')
+plt.title(f'Thrust $\\approx$ {TARGET_THRUST_N:.1f}N, Cruise = {CRUISE_SPEED_MPS:.1f} m/s')
 plt.legend(loc='best')
 plt.ylim(bottom=0)
 
