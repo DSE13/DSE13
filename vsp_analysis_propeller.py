@@ -1,18 +1,17 @@
 import openvsp_config
-import pandas as pd
 import numpy as np
-import json 
-import os
-import sys
-from plotter import plot_polar_data 
-from plotter import read_polar_file 
-
-openvsp_config.LOAD_GRAPHICS = False
-openvsp_config.LOAD_FACADE = False
+import time
 import openvsp as vsp
 import os
 import math
+import json
+from plotter import plot_polar_data 
+from plotter import read_polar_file 
+from stall import simulate_stall_behavior
+openvsp_config.LOAD_GRAPHICS = False
+openvsp_config.LOAD_FACADE = False
 import glob
+# Ensure OpenVSP is initialized 
 
 # --- Atmospheric Constants (Standard Sea Level ISA) ---
 STD_TEMP_K = 288.15
@@ -20,22 +19,11 @@ GAMMA_AIR = 1.4
 R_SPECIFIC_AIR = 287.058
 STD_PRESSURE_PA = 101325.0
 MU_AIR_15C = 1.81e-5 # Pa.s (kg/(m.s))
-RHO_AIR_15C_SL = STD_PRESSURE_PA / (R_SPECIFIC_AIR * STD_TEMP_K)   # kg/m^3 ~1.225
+RHO_AIR_15C_SL = STD_PRESSURE_PA / (R_SPECIFIC_AIR * STD_TEMP_K) # kg/m^3 ~1.225
 SPEED_OF_SOUND_A_15C_SL = math.sqrt(GAMMA_AIR * R_SPECIFIC_AIR * STD_TEMP_K) # m/s ~340.29
 
-def run_openvsp_analysis(params_file_path):
-    """
-    Performs OpenVSP aerodynamic analysis based on parameters loaded from a JSON file.
 
-    Args:
-        params_file_path (str): Full path to the JSON file containing parameters.
-    
-    Returns:
-        tuple: (pandas.DataFrame or None, str or None)
-               - DataFrame of the polar data if successful, else None.
-               - Path to the rotor results file if applicable and found, else None.
-    """
-
+def run_prop_analysis(params_file_path):
     print(f"Python: Loading parameters from: {params_file_path}")
     if not os.path.exists(params_file_path):
         print(f"Python: ERROR - Parameters JSON file not found: {params_file_path}")
@@ -46,18 +34,17 @@ def run_openvsp_analysis(params_file_path):
             params = json.load(f)
     except Exception as e:
         print(f"Python: ERROR - Could not read or parse JSON parameters file: {e}")
-        return None, None # Or raise
+        return None, None 
 
     # Extract parameters from the loaded dictionary
     vsp3_file_path = params.get('vsp_file_path')
     effective_output_dir = params.get('output_data_folder')
-    # output_data_folder = params.get('output_data_folder', '.') # Example for output
     analysis_settings = params.get('analysis_settings', {})
     tessellation_settings = analysis_settings.get('tessellation_settings', {})
-    geometry_settings = tessellation_settings.get('BORGeom', {}) # Match this with what is in the JSON
+    geometry_BOR_settings = tessellation_settings.get('BORGeom', {})
+    geometry_PROP_settings = tessellation_settings.get('PropGeom', {})
     sweep_settings = params.get('sweep_settings', {})
     plot_settings = params.get('plot_settings', {'do_plot': False}) # Default to no plot if not specified
-
     vsp3_file_basename = os.path.splitext(os.path.basename(vsp3_file_path))[0]
     if not vsp3_file_path:
         print("Python: ERROR - 'vsp_file_path' not found in parameters JSON.")
@@ -68,7 +55,6 @@ def run_openvsp_analysis(params_file_path):
         files_to_delete = [
             f"{vsp3_file_basename}_VSPGeom.*",   # Catches .vspaero, .tri, .map, .polar, .lod, .history etc.
             f"{vsp3_file_basename}_DegenGeom.*" # Also catch if DegenGeom naming is used
-            # Add any other specific patterns if needed
         ]
         for pattern in files_to_delete:
             for f_path in glob.glob(os.path.join(effective_output_dir, pattern)):
@@ -83,36 +69,6 @@ def run_openvsp_analysis(params_file_path):
 
     #vsp.VSPCheckSetup()
     print("OpenVSP version:", vsp.GetVSPVersion())
-    
-
-    # # --- Determine effective_output_dir ---
-    # vsp3_file_basename = os.path.splitext(os.path.basename(vsp3_file_path))[0]
-    
-    # # Default output dir is where the VSP3 file is
-    # default_output_dir_based_on_vsp3 = os.path.dirname(vsp3_file_path)
-    # if not default_output_dir_based_on_vsp3: # If vsp3_file_path was just "model.vsp3"
-    #     default_output_dir_based_on_vsp3 = os.getcwd() # Fallback to current Python script CWD
-
-    # effective_output_dir = default_output_dir_based_on_vsp3 # Initialize
-
-    # specified_output_folder_from_json = params.get('output_data_folder')
-    
-    # if specified_output_folder_from_json:
-    #     abs_specified_output_folder = os.path.abspath(specified_output_folder_from_json)
-    #     if not os.path.exists(abs_specified_output_folder):
-    #         try:
-    #             os.makedirs(abs_specified_output_folder, exist_ok=True)
-    #             print(f"Python: Created output data folder: {abs_specified_output_folder}")
-    #             effective_output_dir = abs_specified_output_folder
-    #         except OSError as e:
-    #             print(f"Python: WARNING - Could not create specified output_data_folder {abs_specified_output_folder}: {e}. Using default: {effective_output_dir}")
-    #     elif os.path.isdir(abs_specified_output_folder):
-    #         effective_output_dir = abs_specified_output_folder
-    #     else:
-    #         print(f"Python: WARNING - Specified output_data_folder '{abs_specified_output_folder}' exists but is not a directory. Using default: {effective_output_dir}")
-    
-    # print(f"Python: VSPAERO will be run in and write outputs to: {os.path.abspath(effective_output_dir)}")
-
     print("--> Initializing Geometry")
     vsp.ClearVSPModel()
     vsp.Update()
@@ -120,9 +76,10 @@ def run_openvsp_analysis(params_file_path):
     vsp.ReadVSPFile(vsp3_file_path)
     vsp.Update()
     print("VSP3 file loaded.\n")
-    is_prop_analysis = analysis_settings.get('is_prop_analysis', False)
-    # For non-prop, get the method_choice; default to 'panel' if not specified
-    method_choice = analysis_settings.get('method_choice') 
+    is_prop_analysis = analysis_settings.get('is_prop_analysis', True)
+    method_choice = analysis_settings.get('method_choice', 'vlm') 
+    prop_geom_name = analysis_settings.get('prop_geom_name', "Prop") 
+    rpm = analysis_settings.get('rpm')
 
     b_input = analysis_settings.get('ref_span_b')
     c_input = analysis_settings.get('ref_chord_c')
@@ -133,10 +90,10 @@ def run_openvsp_analysis(params_file_path):
     wake_num_nodes_input = analysis_settings.get('wake_num_nodes')
     wake_type_input = analysis_settings.get('wake_type')
     far_field_dist_factor_input = analysis_settings.get('far_field_dist_factor')
-    tess_u_val = geometry_settings.get('Tess_U')
-    tess_w_val = geometry_settings.get('Tess_W')
+    tess_u_val = geometry_PROP_settings.get('Tess_U')
+    tess_w_val = geometry_PROP_settings.get('Tess_W')
     print(tess_u_val, tess_w_val)
-    target_component_name_for_tess = "BORGeom" # Match this with what is in the JSON
+    target_component_name_for_tess = "PropGeom" 
 
     applied_tess_changes = False
     if tess_u_val is not None or tess_w_val is not None: 
@@ -170,24 +127,31 @@ def run_openvsp_analysis(params_file_path):
             print(f"  WARNING: Component named '{target_component_name_for_tess}' not found in VSP model. Tessellation skipped.")
     elif 'tessellation_settings' in analysis_settings and 'BORGeom' in tessellation_settings:
         print("\n--- Tessellation for 'BORGeom' Skipped: 'Tess_U' or 'Tess_W' not specified or null in JSON. ---")
-    
 
     # Validate essential reference dimensions
     if b_input is None or c_input is None:
         print("Python: ERROR - 'ref_span_b' or 'ref_chord_c' not found or is null in analysis_settings of JSON.")
         return None, None
     
-    
+    vsp.SetParmVal(vsp.FindParm(vsp.FindUnsteadyGroup(0),"RPM","UnsteadyGroup"), rpm)
+    vsp.Update()
+
     print("\n--- Running VSPAEROComputeGeometry ---")
     analysis_compute_geom_name = "VSPAEROComputeGeometry"
     vsp.SetAnalysisInputDefaults(analysis_compute_geom_name)
-    compute_geom_method_val = vsp.PANEL
-    if method_choice == 'vlm':
-        compute_geom_method_val = vsp.VORTEX_LATTICE
-        print(f"ComputeGeometry using VORTEX_LATTICE method for preparation.")
-    else: # panel or default
-        print(f"ComputeGeometry using PANEL method for preparation.")
-    vsp.SetIntAnalysisInput(analysis_compute_geom_name, "AnalysisMethod", [compute_geom_method_val])
+    analysis_method_geom = list(vsp.GetIntAnalysisInput(analysis_compute_geom_name, "AnalysisMethod"))
+    analysis_method_geom[0] = vsp.VORTEX_LATTICE # Fallback for ROTORCRAFT
+    vsp.SetIntAnalysisInput(analysis_compute_geom_name, "AnalysisMethod", analysis_method_geom)
+    if is_prop_analysis:
+        print(f"Propeller analysis detected. Setting ComputeGeometry for propeller.")
+        # Set PropID if provided
+        if prop_geom_name:
+            try:
+                vsp.SetStringAnalysisInput(analysis_compute_geom_name, "PropID", (prop_geom_name,), 0)
+                print(f"ComputeGeometry: Set PropID to {prop_geom_name}")
+            except Exception as e:
+                print(f"ComputeGeometry: Warning - Could not set PropID to {prop_geom_name}: {e}")
+
     print("\n\tExecuting VSPAEROComputeGeometry...")
     compute_geom_success_id = vsp.ExecAnalysis(analysis_compute_geom_name)
     if compute_geom_success_id: # vsp.ExecAnalysis returns a non-zero ID on successful submission
@@ -197,30 +161,28 @@ def run_openvsp_analysis(params_file_path):
         vsp.ClearVSPModel()
         return None, None
     vsp.Update()
+    print("VSPAEROComputeGeometry completed.\n")
+
 
     print("--> Setting up VSPAERO")
     analysis_name = "VSPAEROSweep"
+    vsp.SetAnalysisInputDefaults(analysis_name)
+    vsp.SetIntAnalysisInput(analysis_name, "AnalysisMethod", [0])
+    print(f"VSPAEROSweep: AnalysisMethod set to VLM.")
+
+    vsp.SetIntAnalysisInput(analysis_name, "RotateBladesFlag", (1,), 0) # Enable blade rotation
+    print("VSPAEROSweep: RotateBladesFlag set to 1 (True)")
 
 
-    # --- Analysis Type (VLM/Panel) ---
-    analysis_method_values = list(vsp.GetIntAnalysisInput(analysis_name, "AnalysisMethod"))
-
-    print("\n--- Setting up for Standard VLM/Panel Sweep Analysis ---")
-    if method_choice == 'panel':
-        analysis_method_values[0] = vsp.PANEL
-        print(f"AnalysisMethod set to PANEL: {analysis_method_values[0]}")
-    elif method_choice == 'vlm':
-        analysis_method_values[0] = vsp.VORTEX_LATTICE
-        print(f"AnalysisMethod set to VORTEX_LATTICE: {analysis_method_values[0]}")
-    else:
-        print(f"Warning: Invalid analysis_method_non_prop '{method_choice}'. Defaulting to PANEL.")
-        analysis_method_values[0] = vsp.PANEL
-    vsp.SetIntAnalysisInput(analysis_name, "AnalysisMethod", analysis_method_values)
-    vsp.SetIntAnalysisInput(analysis_name, "RotateBladesFlag", (0,), 0) # Always False for non-propeller
-    print("RotateBladesFlag set to 0 (False)")
-
+    if prop_geom_name:
+        try:
+            vsp.SetStringAnalysisInput(analysis_name, "PropID", (prop_geom_name,), 0)
+            print(f"VSPAEROSweep: Set PropID to '{prop_geom_name}'")
+        except Exception as e:
+            print(f"VSPAEROSweep: Warning - Could not set PropID to '{prop_geom_name}': {e}")
+    
     # --- Reference Dimensions ---
-    s_calculated = b_input * c_input 
+    s_calculated = b_input * c_input * 3 #times amount of blades
     print(f"\nReference Span (b_input): {b_input:.4f} m (e.g. wingspan)")
     print(f"Reference Chord (c_input): {c_input:.4f} m (e.g. MAC)")
     print(f"Reference Area (S_calculated = b*c): {s_calculated:.4f} m^2 (used as Sref)")
@@ -276,7 +238,7 @@ def run_openvsp_analysis(params_file_path):
         alpha_end_deg_input = single_alpha_deg_input
         num_alpha_points_input = 1
         
-        beta_start_deg_input = 0.0 
+        beta_start_deg_input = 0.0 # Assuming single beta for velocity sweep
         beta_end_deg_input = 0.0
         num_beta_points_input = 1
 
@@ -353,7 +315,7 @@ def run_openvsp_analysis(params_file_path):
 
     print("\n--- Setting VSPAERO Analysis Parameters ---")
     vsp.SetDoubleAnalysisInput(analysis_name, "Xcg", (xcg_input,), 0); print(f"  VSPAERO Xcg: {xcg_input:.3f}m")
-    vsp.SetDoubleAnalysisInput(analysis_name, "Rho", (RHO_AIR_15C_SL,), 0); print("  VSPAERO Rho: {RHO_AIR_15C_SL:.3f} kg/m^3 (Standard Sea Level ISA)")
+
     # Alpha settings
     vsp.SetIntAnalysisInput(analysis_name, "AlphaNpts", (num_alpha_points_input,), 0)
     vsp.SetDoubleAnalysisInput(analysis_name, "AlphaStart", (alpha_start_deg_input,), 0)
@@ -378,6 +340,8 @@ def run_openvsp_analysis(params_file_path):
     #     vsp.SetIntAnalysisInput(analysis_name, "MachNpts", (num_vel_points_input,), 0)
     #     print(f"  VSPAERO Mach SWEEP: {num_vel_points_input} pt(s) from {mach_start_input:.4f} to {mach_end_input:.4f}")
 
+    vsp.SetDoubleAnalysisInput(analysis_name, "Vinf", (v_inf_input_ms,), 0)
+    vsp.SetDoubleAnalysisInput(analysis_name, "Vref", (v_inf_input_ms,), 0)
     vsp.SetDoubleAnalysisInput(analysis_name, "ReCref", (re_cref_start_input,), 0)
     vsp.SetDoubleAnalysisInput(analysis_name, "ReCrefEnd", (re_cref_end_input,), 0)
     vsp.SetIntAnalysisInput(analysis_name, "ReCrefNpts", (re_cref_npts_input,), 0)
@@ -386,8 +350,6 @@ def run_openvsp_analysis(params_file_path):
     vsp.SetDoubleAnalysisInput(analysis_name, "Sref", (s_calculated,), 0); print(f"  Sref: {s_calculated:.6f} m^2")
     vsp.SetDoubleAnalysisInput(analysis_name, "bref", (b_input,), 0); print(f"  bref: {b_input:.4f} m")
     vsp.SetDoubleAnalysisInput(analysis_name, "cref", (c_input,), 0); print(f"  cref: {c_input:.4f} m")
-    vsp.SetDoubleAnalysisInput(analysis_name, "Vinf", (v_inf_input_ms,), 0)
-    vsp.SetDoubleAnalysisInput(analysis_name, "Vref", (v_inf_input_ms,), 0)
 
     # Wake Type (FixedWakeFlag)
     if wake_type_input is not None:
@@ -407,11 +369,15 @@ def run_openvsp_analysis(params_file_path):
             print("    (Implied relaxed wake behavior due to WakeIter > 0. Ensure VSPAERO's default FixedWakeFlag aligns or set 'wake_type' explicitly.)")
         else:
             print("    (Implied rigid wake behavior due to WakeIter = 0. Ensure VSPAERO's default FixedWakeFlag aligns or set 'wake_type' explicitly.)")
-    
+    num_time_steps = analysis_settings.get('num_time_step')
+    time_step_size = analysis_settings.get('size_time_step') 
+    vsp.SetIntAnalysisInput(analysis_name, "AutoTimeStepFlag", (0,), 0) 
     vsp.SetIntAnalysisInput(analysis_name, "WakeNumIter", (wake_iter_input,),0); print(f"  WakeNumIter: {wake_iter_input}")
     vsp.SetIntAnalysisInput(analysis_name, "Symmetry", (symm_flag_input,),0); print(f"  Symmetry: {symm_flag_input} ({symm_options.get(symm_flag_input, 'Unknown Code')})")
     vsp.SetIntAnalysisInput(analysis_name, "NCPU", (ncpu,),0); print(f"  NCPU: {ncpu}")
     vsp.SetIntAnalysisInput(analysis_name, "NumWakeNodes", (wake_num_nodes_input,), 0); print(f"NumWakeNodes: {wake_num_nodes_input}")
+    vsp.SetDoubleAnalysisInput(analysis_name, "TimeStepSize", (time_step_size,), 0)
+    vsp.SetIntAnalysisInput(analysis_name, "NumTimeSteps", (num_time_steps,), 0); print(f"NumTimeSteps: {num_time_steps} (TimeStepSize={time_step_size:.4f}s)")
 
     
 
@@ -431,35 +397,10 @@ def run_openvsp_analysis(params_file_path):
     print("\nFinal Analysis Inputs (check VSPAERO settings after this if GUI is open):")
     vsp.PrintAnalysisInputs(analysis_name)
 
-    
+     
     print("\n\tExecuting VSPAERO...")
     rid = vsp.ExecAnalysis(analysis_name)
     print("VSPAERO Execution COMPLETE")
-
-    # --- Execute VSPAERO in the correct directory ---
-    # print(f"Python: Current working directory before VSPAERO: {os.getcwd()}")
-    # print(f"Python: Changing CWD to VSPAERO output directory: {os.path.abspath(effective_output_dir)}")
-    # original_cwd = os.getcwd()
-    # polar_df = None # Initialize
-    
-    # try:
-    #     os.chdir(effective_output_dir)
-    #     print(f"Python: CWD is now: {os.getcwd()}")
-    #     print("\n\tExecuting VSPAERO...")
-    #     print(f"DEBUG: About to execute VSPAERO. Pausing to inspect files in {os.path.abspath(effective_output_dir)}")
-    #     input("Press Enter to continue and run vspaero.exe...")
-    #     vsp.ExecAnalysis(analysis_name) # vsp.ExecAnalysis uses the analysis_name to find the settings.
-    #                                           # It generates a DegenGeom and a .vspaero file (e.g., YourModel_DegenGeom.vspaero)
-    #                                           # The argument to vspaero.exe will be "YourModel_DegenGeom"
-    #     print("VSPAERO Execution COMPLETE")
-    # except Exception as e:
-    #     print(f"Python: ERROR during VSPAERO execution or CWD change: {e}")
-    #     # No polar_df will be available
-    # finally:
-    #     os.chdir(original_cwd)
-    #     print(f"Python: Restored CWD to: {os.getcwd()}")
-
-    # print(f"Python: Expecting/Searching for result files in directory: {os.path.abspath(effective_output_dir)}")
 
     # --- Get and Display Results ---
     vsp3_file_basename = os.path.splitext(os.path.basename(vsp3_file_path))[0]
@@ -482,116 +423,41 @@ def run_openvsp_analysis(params_file_path):
 
     print(f"Python: Expecting/Saving result files in directory: {os.path.abspath(effective_output_dir)}")
 
-    polar_file_name_vspgeom = f"{vsp3_file_basename}_VSPGeom.polar"
-    polar_file_path_vspgeom = os.path.join(effective_output_dir, polar_file_name_vspgeom)
-    polar_file_name_degengeom = f"{vsp3_file_basename}_DegenGeom.polar" 
-    polar_file_path_degengeom = os.path.join(effective_output_dir, polar_file_name_degengeom)
-    
-    polar_df = None
-    polar_file_processed = ""
-    csv_output_path = None
+    rotor_results_path = None  # Initialize to None
 
-    file_to_try_reading = None
-    if os.path.exists(polar_file_path_vspgeom):
-        file_to_try_reading = polar_file_path_vspgeom
-        polar_file_processed = polar_file_name_vspgeom
-    elif os.path.exists(polar_file_path_degengeom): 
-        print(f"Note: VSPGeom polar file ('{polar_file_name_vspgeom}') not found. Trying DegenGeom polar: '{polar_file_name_degengeom}'")
-        file_to_try_reading = polar_file_path_degengeom
-        polar_file_processed = polar_file_name_degengeom
+    rotor_file_name_vspgeom = f"{vsp3_file_basename}_VSPGeom.rotor.1"
+    rotor_file_path_vspgeom = os.path.join(effective_output_dir, rotor_file_name_vspgeom)
+    rotor_file_name_degengeom = f"{vsp3_file_basename}_DegenGeom.rotor.1"
+    rotor_file_path_degengeom = os.path.join(effective_output_dir, rotor_file_name_degengeom)
+
+    if os.path.exists(rotor_file_path_vspgeom):
+        rotor_results_path = rotor_file_path_vspgeom
+        print(f"Found .rotor file: {rotor_results_path}")
+    elif os.path.exists(rotor_file_path_degengeom):
+        rotor_results_path = rotor_file_path_degengeom
+        print(f"Found .rotor file: {rotor_results_path}")
     else:
-        print(f"Error: No .polar file (neither {polar_file_name_vspgeom} nor {polar_file_name_degengeom}) found for '{vsp3_file_basename}' in '{os.path.abspath(effective_output_dir)}'")
+        print(f"Note: No .rotor file found for '{vsp3_file_basename}' in '{os.path.abspath(effective_output_dir)}'")
 
-    if file_to_try_reading:
-        polar_df_raw = read_polar_file(file_to_try_reading)
-        if polar_df_raw is not None and not polar_df_raw.empty:
-            print(f"\nSuccessfully read polar data from '{polar_file_processed}'.")
-
-            # ###Stall###
-            # stall_params = params.get('stall_simulation_settings', {}) 
-            # aoa_stall_val = float(stall_params.get('aoa_stall_positive', 18.0))
-            # cl_drop_val = float(stall_params.get('cl_drop', 0.2))
-            # drop_duration_val = float(stall_params.get('drop_duration_aoa', 10.0))
-            # plateau_duration_val = float(stall_params.get('plateau_duration_aoa', 10.0))
-            # required_cols = ['AoA', 'Beta', 'CL', 'CDtot', 'CMy']
-            # missing_cols = [col for col in required_cols if col not in polar_df_raw.columns]
-            # if missing_cols:
-            #     print(f"WARNING: Stall simulation skipped. Missing required columns in polar data: {missing_cols}")
-            #     print(f"         Available columns: {polar_df_raw.columns.tolist()}")
-            #     polar_df = polar_df_raw 
-            # else:
-            #     polar_df = simulate_stall_behavior(
-            #         polar_df_raw,
-            #         aoa_stall_positive=aoa_stall_val,
-            #         cl_drop=cl_drop_val,
-            #         drop_duration_aoa=drop_duration_val,
-            #         plateau_duration_aoa=plateau_duration_val,
-            #         aoa_col='AoA',
-            #         cd_col='CDtot',  
-            #         cm_col='CMy'    
-            #     )
-            #     print("Stall simulation applied to polar data.")
-
-            
-            csv_file_name = f"{os.path.splitext(polar_file_processed)[0]}.csv" 
-            csv_output_path = os.path.join(effective_output_dir, csv_file_name)
-            write_polar_to_csv(polar_file_processed, csv_output_path)
-
-            if plot_settings and plot_settings.get('do_plot', False):
-                x_col = plot_settings.get('x_axis_col')
-                y_col = plot_settings.get('y_axis_col')
-                title_suffix = plot_settings.get('plot_title_suffix', "")
-                plot_title = f"{os.path.basename(polar_file_processed)} {title_suffix}".strip()
-
-                if x_col and y_col and x_col in polar_df.columns and y_col in polar_df.columns:
-                    print(f"Plotting '{y_col}' vs '{x_col}' for {plot_title}")
-                    plot_polar_data(polar_df, x_col, y_col, plot_title)
-                else:
-                    print("Plotting skipped: x_axis_col or y_axis_col missing in plot_settings or not in DataFrame.")
-                    print(f"  Requested X: '{x_col}', Requested Y: '{y_col}'")
-                    print(f"  Available columns: {polar_df.columns.tolist()}")
-        elif polar_df is not None and polar_df.empty:
-             print(f"Warning: Polar file '{file_to_try_reading}' was read but is empty or parsed incorrectly.")
-        else: # polar_df is None
-             print(f"Warning: Failed to read or parse polar file '{file_to_try_reading}' using read_polar_file function.")
-
-    vsp.ClearVSPModel() # Clean up
-    print("\nAnalysis function finished.")
-    return polar_df, csv_output_path
-
-
-
-def write_polar_to_csv(polar_df, csv_file_path):
-    """
-    Writes a pandas DataFrame (from a .polar file) to a CSV file.
-
-    Args:
-        polar_df (pd.DataFrame): DataFrame containing the polar data.
-        csv_file_path (str): Full path to the output CSV file.
-    """
-    if polar_df is not None and not polar_df.empty:
-        try:
-            polar_df.to_csv(csv_file_path, index=False) # index=False to not write pandas index
-            print(f"Python: Successfully wrote polar data to CSV: {csv_file_path}")
-            return True
-        except Exception as e:
-            print(f"Python: ERROR - Could not write polar data to CSV '{csv_file_path}': {e}")
-            return False
+    if hasattr(vsp, 'ClearVSPModel'): # Check if vsp object and method exist
+        vsp.ClearVSPModel()
     else:
-        print(f"Python: Skipped writing CSV for '{csv_file_path}' as DataFrame is None or empty.")
-        return False
-    
+        print("Warning: vsp.ClearVSPModel not available.")
+        
+    print("\nPropeller Analysis function finished.")
+    return rotor_results_path
 
 
 
 if __name__ == "__main__":
-    print("This Python script 'vsp_analysis_body.py' now expects a JSON file path as an argument to run_openvsp_analysis.")
-    test_params_file = r'C:\Users\tomsp\PycharmProjects\pythonProject1\DSE\LORAX_params.json' ###CHANGE THIS TO PROPER PATH#####
-    if os.path.exists(test_params_file):
-        print(f"\n--- Running Standalone Python Test with {test_params_file} ---")
-        df, csvf = run_openvsp_analysis(test_params_file)
-        if df is not None:
-            print("\nStandalone Test Polar Data (first 5 rows):")
-            print(df.head())
-        if csvf:
-            print(f"Standalone Test CSV File: {csvf}")
+    print("This Python script 'vsp_analysis_propeller.py' provides analysis functions.")
+    test_params_file_prop = r'C:\Users\tomsp\PycharmProjects\pythonProject1\DSE\prop_params.json' # CHANGEEEEE
+    if os.path.exists(test_params_file_prop):
+        print(f"\n--- Running Standalone Python Test (Propeller) with {test_params_file_prop} ---")
+        rotorf_p = run_prop_analysis(test_params_file_prop)
+        if rotorf_p is not None:
+            print(f"Standalone Propeller Test Rotor File: {rotorf_p}")
+            print(rotorf_p.head())
+            print(f"  Columns available: {rotorf_p.columns.tolist()}")
+    else:
+        print(f"Test file {test_params_file_prop} not found. Create it based on the example prop_params dict above. Skipping propeller test.")
